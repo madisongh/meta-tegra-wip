@@ -19,6 +19,47 @@ SRC_URI = " \
     git://${SRC_REPO_KERNEL_DTS};branch=${SRCBRANCH};name=kernel-devicetree;destsuffix=${BPN}-${PV}/kernel-devicetree \
 "
 
+EXTRA_PATCHES += " \
+    file://linux-hwpm/0001-tegra-hwpm-Fix-build-for-Linux-v6.13.patch;patchdir=hwpm \
+    file://linux-nv-oot/0003-drivers-correct-parameter-of-macro-MODULE_IMPORT_NS.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0004-drivers-timer-use-correct-timer-interfaces.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0005-drivers-gpio-add-return-value-for-callback-set-of-st.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0006-drivers-virt-add-constify-attribute-for-struct-bin_a.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0007-drivers-tegra-replace-devm_gpio_request-with-devm_gp.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0008-drivers-virt-replace-work_on_cpu_safe-with-work_on_c.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0009-drivers-video-define-DMA-action-direction-explicitly.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0010-drivers-crypto-add-priv-pointer-in-context-struct-to.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0011-drivers-nvmap-calculate-page-address-explicitly.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0012-ASoC-tegra-add-necessary-min-parameter-to-SOC_SINGLE.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0013-sound-soc-set-Codec-Stream-Card-name-explicitly.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0014-crypto-tegra-Remove-an-incorrect-iommu_fwspec_free-c.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0015-sound-soc-use-reasonable-SND_SOC_DAIFMT_CBx_CFx.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0016-drivers-ufs-constify-the-third-parameter-of-ufs_tegr.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0017-sound-soc-replace-idle_bias_off-with-idle_bias.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0018-drivers-drm-use-video-aperture-helpers-explicitly.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0019-drivers-nvmap-use-file-reference-API-to-replace-atom.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0020-drivers-realtek-bt-replace-set_bit-with-hci_set_quir.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0021-drivers-ethernet-remove-explicit-operation-of-page-i.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0022-drivers-bluedroid-use-correct-wakeup-source-interfac.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0023-drivers-drm-use-mainline-drm_dp_link_power_up-down-A.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0024-drivers-mttcan-remove-constify-attribute-for-ttcan_r.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0025-drivers-mttcan-switch-to-use-members-in-struct-data_.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0026-drivers-drm-fb-add-format-info-parameter-to-tegra-fb.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0027-drivers-nvmap-remove-cache_sgt_mapping.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0028-sound-soc-replace-of_property_read_bool-with-of_prop.patch;patchdir=nvidia-oot \
+    file://linux-nv-oot/0029-rtk_btusb-update-rtk_coex-for-compatibility-with-6.1.patch;patchdir=nvidia-oot \
+    file://linux-nvgpu/0001-nvgpu-Update-MODULE_IMPORT_NS-macro-arguemnt-to-stri.patch;patchdir=nvgpu \
+    file://linux-nvgpu/0002-nvgpu-Update-hrtimer_init-to-hrtimer_setup.patch;patchdir=nvgpu \
+    file://nv-kernel-display-driver/0003-nvdisplay-kernel-open-correct-parameter-of-macro-MOD.patch;patchdir=nvdisplay \
+    file://nv-kernel-display-driver/0004-nvdisplay-Kbuild-add-parameters-into-XXX_CFLAGS.patch;patchdir=nvdisplay \
+    file://nv-kernel-display-driver/0005-nvdisplay-timer-replace-hrtimer_init-with-hrtimer_se.patch;patchdir=nvdisplay \
+    file://nv-kernel-display-driver/0006-nvdisplay-nvidia-check-importer-operations-directly.patch;patchdir=nvdisplay \
+    file://nv-kernel-display-driver/0007-nvdisplay-timer-replace-del_timer_sync-with-timer_de.patch;patchdir=nvdisplay \
+    file://nv-kernel-display-driver/0008-nvdisplay-nvidia-drm-fb-add-format-info-parameter-to.patch;patchdir=nvdisplay \
+    file://nv-kernel-display-driver/0009-nvdisplay-nvidia-drm-remove-unused-date-member.patch;patchdir=nvdisplay \
+    file://nv-kernel-display-driver/0010-nvdisplay-nvidia-drm-add-constify-attribute-for-stru.patch;patchdir=nvdisplay \
+"
+
 SRCBRANCH = "l4t/l4t-r36.5"
 # tag: jetson_36.5
 SRCREV_nvidia-oot = "b05da1f94ae5a2dbfe928ef7ab387035a2b77a20"

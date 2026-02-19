@@ -1,0 +1,44 @@
+From 9321101f174df3143188a80d5675b99c9ad96b22 Mon Sep 17 00:00:00 2001
+From: Kurt Kiefer <kekiefer@gmail.com>
+Date: Wed, 18 Feb 2026 13:14:54 -0800
+Subject: [PATCH 30/30] rtk_btusb: update rtk_coex for compatibility with 6.18
+ kernel
+
+Upstream-Status: Pending
+
+Signed-off-by: Kurt Kiefer <kekiefer@gmail.com>
+---
+ drivers/bluetooth/realtek/rtk_coex.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/bluetooth/realtek/rtk_coex.c b/drivers/bluetooth/realtek/rtk_coex.c
+index 08155ee2..8b0b4a02 100644
+--- a/drivers/bluetooth/realtek/rtk_coex.c
++++ b/drivers/bluetooth/realtek/rtk_coex.c
+@@ -2430,7 +2430,11 @@ static void rtk_handle_le_terminate_big_complete_evt(u8 * p)
+ 
+ static void rtk_handle_le_big_sync_established_evt(void * p)
+ {
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
++	struct hci_evt_le_big_sync_established *ev = p;
++#else
+ 	struct hci_evt_le_big_sync_estabilished *ev = p;
++#endif
+ 	u8 status;
+ 	u16 big_handle;
+ 	u16 bis_handle;
+@@ -3610,7 +3614,11 @@ void rtk_btcoex_close(void)
+ 	/* Delete all timers */
+ 	if (btrtl_coex.polling_enable) {
+ 		btrtl_coex.polling_enable = 0;
++#if defined(NV_TIMER_DELETE_PRESENT) /* Linux v6.15 */
++		timer_delete_sync(&(btrtl_coex.polling_timer));
++#else
+ 		del_timer_sync(&(btrtl_coex.polling_timer));
++#endif
+ 	}
+ #endif /* RTB_SOFTWARE_MAILBOX */
+ 
+-- 
+2.34.1
+

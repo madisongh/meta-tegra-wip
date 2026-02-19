@@ -1,0 +1,31 @@
+From 5f69c76dfb20c23aa154340354d199684e30e524 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Mon, 9 Feb 2026 16:04:51 +0800
+Subject: [PATCH 18/30] drivers: drm: use video aperture helpers explicitly
+
+Based on kernel upstream commit 689274a56c0c("drm: Remove
+DRM aperture helpers"), it needs to use video aperture helpers
+explicitly.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/gpu/drm/tegra/drm.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/gpu/drm/tegra/drm.c b/drivers/gpu/drm/tegra/drm.c
+index 23d387d9..4bbea220 100644
+--- a/drivers/gpu/drm/tegra/drm.c
++++ b/drivers/gpu/drm/tegra/drm.c
+@@ -1332,6 +1332,7 @@ static int host1x_drm_probe(struct host1x_device *dev)
+ #else
+ 		err = drm_aperture_remove_framebuffers(false, "tegradrmfb");
+ #endif
++
+ 		if (err < 0)
+ 			goto hub;
+ 	}
+-- 
+2.34.1
+

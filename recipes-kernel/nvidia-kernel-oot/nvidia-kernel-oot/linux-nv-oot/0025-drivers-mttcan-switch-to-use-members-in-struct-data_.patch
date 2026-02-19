@@ -1,0 +1,42 @@
+From 06f32025413cbb249ac58c6189b260d4ad7471d7 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Tue, 10 Feb 2026 14:29:26 +0800
+Subject: [PATCH 25/30] drivers: mttcan: switch to use members in struct
+ data_bittiming_params
+
+Based on kernel upstream commit b803c4a4f788("can: dev: add
+struct data_bittiming_params to group FD parameters "), it needs
+to switch to use members in struct data_bittiming_params.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/net/can/mttcan/native/m_ttcan_linux.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/can/mttcan/native/m_ttcan_linux.c b/drivers/net/can/mttcan/native/m_ttcan_linux.c
+index f7c2ded0..11b5a525 100644
+--- a/drivers/net/can/mttcan/native/m_ttcan_linux.c
++++ b/drivers/net/can/mttcan/native/m_ttcan_linux.c
+@@ -996,7 +996,7 @@ static int mttcan_do_set_bittiming(struct net_device *dev)
+ 	int err = 0;
+ 	struct mttcan_priv *priv = netdev_priv(dev);
+ 	const struct can_bittiming *bt = &priv->can.bittiming;
+-	const struct can_bittiming *dbt = &priv->can.data_bittiming;
++	const struct can_bittiming *dbt = &priv->can.fd.data_bittiming;
+ 
+ 	memcpy(&priv->ttcan->bt_config.nominal, bt,
+ 		sizeof(struct can_bittiming));
+@@ -1205,7 +1205,7 @@ static struct net_device *alloc_mttcan_dev(void)
+ 
+ 	priv->dev = dev;
+ 	priv->can.bittiming_const = &mttcan_normal_bittiming_const;
+-	priv->can.data_bittiming_const = &mttcan_data_bittiming_const;
++	priv->can.fd.data_bittiming_const = &mttcan_data_bittiming_const;
+ 	priv->can.do_set_bittiming = mttcan_do_set_bittiming;
+ 	priv->can.do_set_mode = mttcan_set_mode;
+ 	priv->can.do_get_berr_counter = mttcan_get_berr_counter;
+-- 
+2.34.1
+

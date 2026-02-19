@@ -1,0 +1,46 @@
+From b70f993268e885820a3eecaa5283dbc451019610 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Mon, 9 Feb 2026 11:07:35 +0800
+Subject: [PATCH 17/30] sound: soc: replace idle_bias_off with idle_bias
+
+Based on kernel upstream commit 889dd56f8c03("ASoC: soc-dapm:
+tidyup idle_bias handling - step1"), it needs to replace idle_bias_off
+with idle_bias.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ sound/soc/tegra-virt-alt/tegra_pcm_virt_alt.c | 2 +-
+ sound/soc/tegra/tegra_machine_driver.c        | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/tegra-virt-alt/tegra_pcm_virt_alt.c b/sound/soc/tegra-virt-alt/tegra_pcm_virt_alt.c
+index b057e401..8b2cd1cd 100644
+--- a/sound/soc/tegra-virt-alt/tegra_pcm_virt_alt.c
++++ b/sound/soc/tegra-virt-alt/tegra_pcm_virt_alt.c
+@@ -329,7 +329,7 @@ static int tegra_alt_pcm_ioctl(struct snd_soc_component *component,
+ static int tegra_alt_pcm_probe(struct snd_soc_component *component)
+ {
+ 	struct snd_soc_dapm_context *dapm = snd_soc_component_get_dapm(component);
+-	dapm->idle_bias_off = 1;
++	dapm->idle_bias = false;
+ 	return 0;
+ }
+ 
+diff --git a/sound/soc/tegra/tegra_machine_driver.c b/sound/soc/tegra/tegra_machine_driver.c
+index 0e707c4a..12ff2f41 100644
+--- a/sound/soc/tegra/tegra_machine_driver.c
++++ b/sound/soc/tegra/tegra_machine_driver.c
+@@ -353,7 +353,7 @@ static int tegra_machine_driver_probe(struct platform_device *pdev)
+ 	platform_set_drvdata(pdev, card);
+ 	snd_soc_card_set_drvdata(card, machine);
+ 
+-	card->dapm.idle_bias_off = true;
++	card->dapm.idle_bias = false;
+ 
+ 	memset(&machine->audio_clock, 0, sizeof(machine->audio_clock));
+ 	ret = tegra_asoc_utils_init(&machine->audio_clock, &pdev->dev);
+-- 
+2.34.1
+

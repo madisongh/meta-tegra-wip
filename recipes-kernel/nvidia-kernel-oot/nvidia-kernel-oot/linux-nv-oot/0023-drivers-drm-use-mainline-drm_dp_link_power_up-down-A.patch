@@ -1,0 +1,136 @@
+From 5ce68146457b35f944fab867a207c3f875a41935 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Tue, 10 Feb 2026 12:20:39 +0800
+Subject: [PATCH 23/30] drivers: drm: use mainline drm_dp_link_power_up/down()
+ API
+
+Based on kernel upstream commit 09cdda7a60f4("drm/dp: Pull
+drm_dp_link_power_up/down from Tegra to common drm_dp_helper"),
+remove tegra specific drm_dp_link_power_up/down() interface, use
+mainline ones directly.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/gpu/drm/tegra/dp.c  | 67 -------------------------------------
+ drivers/gpu/drm/tegra/dp.h  |  2 --
+ drivers/gpu/drm/tegra/sor.c |  4 +--
+ 3 files changed, 2 insertions(+), 71 deletions(-)
+
+diff --git a/drivers/gpu/drm/tegra/dp.c b/drivers/gpu/drm/tegra/dp.c
+index bc6d9a2c..bd5b80bc 100644
+--- a/drivers/gpu/drm/tegra/dp.c
++++ b/drivers/gpu/drm/tegra/dp.c
+@@ -263,73 +263,6 @@ int drm_dp_link_probe(struct drm_dp_aux *aux, struct drm_dp_link *link)
+ 	return 0;
+ }
+ 
+-/**
+- * drm_dp_link_power_up() - power up a DisplayPort link
+- * @aux: DisplayPort AUX channel
+- * @link: pointer to a structure containing the link configuration
+- *
+- * Returns 0 on success or a negative error code on failure.
+- */
+-int drm_dp_link_power_up(struct drm_dp_aux *aux, struct drm_dp_link *link)
+-{
+-	u8 value;
+-	int err;
+-
+-	/* DP_SET_POWER register is only available on DPCD v1.1 and later */
+-	if (link->revision < 0x11)
+-		return 0;
+-
+-	err = drm_dp_dpcd_readb(aux, DP_SET_POWER, &value);
+-	if (err < 0)
+-		return err;
+-
+-	value &= ~DP_SET_POWER_MASK;
+-	value |= DP_SET_POWER_D0;
+-
+-	err = drm_dp_dpcd_writeb(aux, DP_SET_POWER, value);
+-	if (err < 0)
+-		return err;
+-
+-	/*
+-	 * According to the DP 1.1 specification, a "Sink Device must exit the
+-	 * power saving state within 1 ms" (Section 2.5.3.1, Table 5-52, "Sink
+-	 * Control Field" (register 0x600).
+-	 */
+-	usleep_range(1000, 2000);
+-
+-	return 0;
+-}
+-
+-/**
+- * drm_dp_link_power_down() - power down a DisplayPort link
+- * @aux: DisplayPort AUX channel
+- * @link: pointer to a structure containing the link configuration
+- *
+- * Returns 0 on success or a negative error code on failure.
+- */
+-int drm_dp_link_power_down(struct drm_dp_aux *aux, struct drm_dp_link *link)
+-{
+-	u8 value;
+-	int err;
+-
+-	/* DP_SET_POWER register is only available on DPCD v1.1 and later */
+-	if (link->revision < 0x11)
+-		return 0;
+-
+-	err = drm_dp_dpcd_readb(aux, DP_SET_POWER, &value);
+-	if (err < 0)
+-		return err;
+-
+-	value &= ~DP_SET_POWER_MASK;
+-	value |= DP_SET_POWER_D3;
+-
+-	err = drm_dp_dpcd_writeb(aux, DP_SET_POWER, value);
+-	if (err < 0)
+-		return err;
+-
+-	return 0;
+-}
+-
+ /**
+  * drm_dp_link_configure() - configure a DisplayPort link
+  * @aux: DisplayPort AUX channel
+diff --git a/drivers/gpu/drm/tegra/dp.h b/drivers/gpu/drm/tegra/dp.h
+index cb12ed0c..695060ca 100644
+--- a/drivers/gpu/drm/tegra/dp.h
++++ b/drivers/gpu/drm/tegra/dp.h
+@@ -164,8 +164,6 @@ int drm_dp_link_remove_rate(struct drm_dp_link *link, unsigned long rate);
+ void drm_dp_link_update_rates(struct drm_dp_link *link);
+ 
+ int drm_dp_link_probe(struct drm_dp_aux *aux, struct drm_dp_link *link);
+-int drm_dp_link_power_up(struct drm_dp_aux *aux, struct drm_dp_link *link);
+-int drm_dp_link_power_down(struct drm_dp_aux *aux, struct drm_dp_link *link);
+ int drm_dp_link_configure(struct drm_dp_aux *aux, struct drm_dp_link *link);
+ int drm_dp_link_choose(struct drm_dp_link *link,
+ 		       const struct drm_display_mode *mode,
+diff --git a/drivers/gpu/drm/tegra/sor.c b/drivers/gpu/drm/tegra/sor.c
+index fd494a1b..3d40f3e0 100644
+--- a/drivers/gpu/drm/tegra/sor.c
++++ b/drivers/gpu/drm/tegra/sor.c
+@@ -2708,7 +2708,7 @@ static void tegra_sor_dp_disable(struct drm_encoder *encoder)
+ 	 * the AUX transactions would just be timing out.
+ 	 */
+ 	if (output->connector.status != connector_status_disconnected) {
+-		err = drm_dp_link_power_down(sor->aux, &sor->link);
++		err = drm_dp_link_power_down(sor->aux, sor->link.revision);
+ 		if (err < 0)
+ 			dev_err(sor->dev, "failed to power down link: %d\n",
+ 				err);
+@@ -2924,7 +2924,7 @@ static void tegra_sor_dp_enable(struct drm_encoder *encoder)
+ 	else
+ 		dev_dbg(sor->dev, "link training succeeded\n");
+ 
+-	err = drm_dp_link_power_up(sor->aux, &sor->link);
++	err = drm_dp_link_power_up(sor->aux, sor->link.revision);
+ 	if (err < 0)
+ 		dev_err(sor->dev, "failed to power up DP link: %d\n", err);
+ 
+-- 
+2.34.1
+

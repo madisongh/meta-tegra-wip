@@ -1,0 +1,33 @@
+From 852eb886d23127b6bee4c91fc23aed92618249cc Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Tue, 3 Feb 2026 11:37:33 +0800
+Subject: [PATCH 03/10] nvdisplay: kernel-open: correct parameter of macro
+ MODULE_IMPORT_NS
+
+Based on kernel upstream commit cdd30ebb1b9f("module: Convert
+symbol namespace to string literal"), it needs to pass a string as
+parameter for macro MODULE_IMPORT_NS.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ kernel-open/nvidia/nv-frontend.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel-open/nvidia/nv-frontend.c b/kernel-open/nvidia/nv-frontend.c
+index f5b871e..e42a128 100644
+--- a/kernel-open/nvidia/nv-frontend.c
++++ b/kernel-open/nvidia/nv-frontend.c
+@@ -42,7 +42,7 @@ MODULE_ALIAS_CHARDEV_MAJOR(NV_MAJOR_DEVICE_NUMBER);
+  * DMA_BUF namespace is added by commit id 16b0314aa746
+  * ("dma-buf: move dma-buf symbols into the DMA_BUF module namespace") in 5.16
+  */
+-MODULE_IMPORT_NS(DMA_BUF);
++MODULE_IMPORT_NS("DMA_BUF");
+ 
+ #endif
+ 
+-- 
+2.34.1
+

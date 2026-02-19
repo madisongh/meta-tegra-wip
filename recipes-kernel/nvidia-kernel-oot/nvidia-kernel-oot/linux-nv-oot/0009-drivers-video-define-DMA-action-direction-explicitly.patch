@@ -1,0 +1,33 @@
+From ff0843559cfdd81f8a674e6ea0c4749b86d85b89 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Wed, 4 Feb 2026 14:59:25 +0800
+Subject: [PATCH 09/30] drivers: video: define DMA action direction explicitly
+
+Based on kernel upstream commit b129125e1f96("arm64: asm-offsets:
+remove DMA_{TO,FROM}_DEVICE"), it needs to define DMA action direction
+explicitly.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/video/tegra/nvmap/nvmap_cache_maint.S | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/video/tegra/nvmap/nvmap_cache_maint.S b/drivers/video/tegra/nvmap/nvmap_cache_maint.S
+index f1debff3..f23d6e74 100644
+--- a/drivers/video/tegra/nvmap/nvmap_cache_maint.S
++++ b/drivers/video/tegra/nvmap/nvmap_cache_maint.S
+@@ -17,6 +17,9 @@
+ #include <asm/alternative.h>
+ #include <asm/asm-uaccess.h>
+ 
++#define DMA_TO_DEVICE	1 /* DMA_TO_DEVICE */
++#define DMA_FROM_DEVICE 2 /* DMA_FROM_DEVICE */
++
+ /*
+  *	invalidate_icache_range(start,end)
+  *
+-- 
+2.34.1
+

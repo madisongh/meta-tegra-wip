@@ -1,0 +1,42 @@
+From 572f229dfb4636ec683bdc010ae1928d74504fa9 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Tue, 3 Feb 2026 15:08:04 +0800
+Subject: [PATCH 06/30] drivers: virt: add constify attribute for struct
+ bin_attribute instance
+
+Based on kernel upstream commit 94a20fb9af16("sysfs: treewide:
+constify attribute callback of bin_attribute::mmap()"), it needs to add
+constify attribute for hvc_sysfs_mmap().
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/virt/tegra/hvc_sysfs.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/virt/tegra/hvc_sysfs.c b/drivers/virt/tegra/hvc_sysfs.c
+index 67ed37f5..2505d4dc 100644
+--- a/drivers/virt/tegra/hvc_sysfs.c
++++ b/drivers/virt/tegra/hvc_sysfs.c
+@@ -98,7 +98,7 @@ static int hvc_create_sysfs(
+ }
+ 
+ static ssize_t log_mask_read(struct file *fp, struct kobject *ko,
+-	struct bin_attribute *attr, char *buf, loff_t pos, size_t size)
++	const struct bin_attribute *attr, char *buf, loff_t pos, size_t size)
+ {
+ 	if (size == sizeof(uint64_t))
+ 		hyp_trace_get_mask((uint64_t *)buf);
+@@ -106,7 +106,7 @@ static ssize_t log_mask_read(struct file *fp, struct kobject *ko,
+ }
+ 
+ static ssize_t log_mask_write(struct file *fp, struct kobject *ko,
+-	struct bin_attribute *attr, char *buf, loff_t pos, size_t size)
++	const struct bin_attribute *attr, char *buf, loff_t pos, size_t size)
+ {
+ 	if (size == sizeof(uint64_t))
+ 		hyp_trace_set_mask(*(uint64_t *)buf);
+-- 
+2.34.1
+

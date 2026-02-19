@@ -1,0 +1,94 @@
+From 38a2ccdfee28714b984bea15b89609d1a9c8df03 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Tue, 10 Feb 2026 15:15:32 +0800
+Subject: [PATCH 26/30] drivers: drm: fb: add format info parameter to tegra fb
+ API
+
+Based on kernel upstream commit 81112eaac559("drm: Pass the format
+info to .fb_create()"), it needs to add format info parameter to
+tegra fb API.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/gpu/drm/tegra/drm.h   | 2 ++
+ drivers/gpu/drm/tegra/fb.c    | 7 ++++---
+ drivers/gpu/drm/tegra/fbdev.c | 2 +-
+ 3 files changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/tegra/drm.h b/drivers/gpu/drm/tegra/drm.h
+index 4e31e5b8..45dd8d2a 100644
+--- a/drivers/gpu/drm/tegra/drm.h
++++ b/drivers/gpu/drm/tegra/drm.h
+@@ -198,11 +198,13 @@ bool tegra_fb_is_bottom_up(struct drm_framebuffer *framebuffer);
+ int tegra_fb_get_tiling(struct drm_framebuffer *framebuffer,
+ 			struct tegra_bo_tiling *tiling);
+ struct drm_framebuffer *tegra_fb_alloc(struct drm_device *drm,
++				       const struct drm_format_info *info,
+ 				       const struct drm_mode_fb_cmd2 *mode_cmd,
+ 				       struct tegra_bo **planes,
+ 				       unsigned int num_planes);
+ struct drm_framebuffer *tegra_fb_create(struct drm_device *drm,
+ 					struct drm_file *file,
++					const struct drm_format_info *info,
+ 					const struct drm_mode_fb_cmd2 *cmd);
+ 
+ #if defined(NV_DRM_DRIVER_HAS_FBDEV_PROBE) /* Linux v6.13 */
+diff --git a/drivers/gpu/drm/tegra/fb.c b/drivers/gpu/drm/tegra/fb.c
+index 02f04326..276c1c16 100644
+--- a/drivers/gpu/drm/tegra/fb.c
++++ b/drivers/gpu/drm/tegra/fb.c
+@@ -107,6 +107,7 @@ static const struct drm_framebuffer_funcs tegra_fb_funcs = {
+ };
+ 
+ struct drm_framebuffer *tegra_fb_alloc(struct drm_device *drm,
++				       const struct drm_format_info *info,
+ 				       const struct drm_mode_fb_cmd2 *mode_cmd,
+ 				       struct tegra_bo **planes,
+ 				       unsigned int num_planes)
+@@ -119,7 +120,7 @@ struct drm_framebuffer *tegra_fb_alloc(struct drm_device *drm,
+ 	if (!fb)
+ 		return ERR_PTR(-ENOMEM);
+ 
+-	drm_helper_mode_fill_fb_struct(drm, fb, mode_cmd);
++	drm_helper_mode_fill_fb_struct(drm, fb, info, mode_cmd);
+ 
+ 	for (i = 0; i < fb->format->num_planes; i++)
+ 		fb->obj[i] = &planes[i]->gem;
+@@ -137,9 +138,9 @@ struct drm_framebuffer *tegra_fb_alloc(struct drm_device *drm,
+ 
+ struct drm_framebuffer *tegra_fb_create(struct drm_device *drm,
+ 					struct drm_file *file,
++					const struct drm_format_info *info,
+ 					const struct drm_mode_fb_cmd2 *cmd)
+ {
+-	const struct drm_format_info *info = drm_get_format_info(drm, cmd);
+ 	struct tegra_bo *planes[4];
+ 	struct drm_gem_object *gem;
+ 	struct drm_framebuffer *fb;
+@@ -170,7 +171,7 @@ struct drm_framebuffer *tegra_fb_create(struct drm_device *drm,
+ 		planes[i] = to_tegra_bo(gem);
+ 	}
+ 
+-	fb = tegra_fb_alloc(drm, cmd, planes, i);
++	fb = tegra_fb_alloc(drm, info, cmd, planes, i);
+ 	if (IS_ERR(fb)) {
+ 		err = PTR_ERR(fb);
+ 		goto unreference;
+diff --git a/drivers/gpu/drm/tegra/fbdev.c b/drivers/gpu/drm/tegra/fbdev.c
+index c4269d94..df6e4596 100644
+--- a/drivers/gpu/drm/tegra/fbdev.c
++++ b/drivers/gpu/drm/tegra/fbdev.c
+@@ -133,7 +133,7 @@ static int tegra_fbdev_probe(struct drm_fb_helper *helper,
+ 		return PTR_ERR(info);
+ 	}
+ 
+-	fb = tegra_fb_alloc(drm, &cmd, &bo, 1);
++	fb = tegra_fb_alloc(drm, drm_format_info(cmd.pixel_format), &cmd, &bo, 1);
+ 	if (IS_ERR(fb)) {
+ 		err = PTR_ERR(fb);
+ 		dev_err(drm->dev, "failed to allocate DRM framebuffer: %d\n",
+-- 
+2.34.1
+

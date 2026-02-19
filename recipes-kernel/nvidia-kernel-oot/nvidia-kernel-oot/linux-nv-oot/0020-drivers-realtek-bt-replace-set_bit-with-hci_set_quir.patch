@@ -1,0 +1,57 @@
+From f38eecaf496b8faf99e2492147119cef073ce60b Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Mon, 9 Feb 2026 17:26:24 +0800
+Subject: [PATCH 20/30] drivers: realtek: bt: replace set_bit() with
+ hci_set_quirk()
+
+Based on kernel upstream commit 6851a0c228fc("Bluetooth: hci_dev:
+replace 'quirks' integer by 'quirk_flags' bitmap"), it needs to
+replace set_bit() with hci_set_quirk().
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/bluetooth/realtek/rtk_bt.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/bluetooth/realtek/rtk_bt.c b/drivers/bluetooth/realtek/rtk_bt.c
+index 7a778a96..28b5d893 100644
+--- a/drivers/bluetooth/realtek/rtk_bt.c
++++ b/drivers/bluetooth/realtek/rtk_bt.c
+@@ -2037,12 +2037,20 @@ static int btusb_probe(struct usb_interface *intf,
+ 
+ #if HCI_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
+ 	set_bit(BTUSB_USE_ALT3_FOR_WBS, &data->flags);
++#if HCI_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
++	hci_set_quirk(hdev, HCI_QUIRK_WIDEBAND_SPEECH_SUPPORTED);
++#else
+ 	set_bit(HCI_QUIRK_WIDEBAND_SPEECH_SUPPORTED, &hdev->quirks);
+ #endif
++#endif
+ 
+ #if HCI_VERSION_CODE >= KERNEL_VERSION(3, 7, 1)
+ 	if (!reset)
++#if HCI_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
++		hci_set_quirk(hdev, HCI_QUIRK_RESET_ON_CLOSE);
++#else
+ 		set_bit(HCI_QUIRK_RESET_ON_CLOSE, &hdev->quirks);
++#endif
+ #endif
+ 
+ 	/* Interface numbers are hardcoded in the specification */
+@@ -2059,7 +2067,11 @@ static int btusb_probe(struct usb_interface *intf,
+ 	}
+ 
+ #if HCI_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
++#if HCI_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
++	hci_set_quirk(hdev, HCI_QUIRK_SIMULTANEOUS_DISCOVERY);
++#else
+ 	set_bit(HCI_QUIRK_SIMULTANEOUS_DISCOVERY, &hdev->quirks);
++#endif
+ #endif
+ 
+ 	err = hci_register_dev(hdev);
+-- 
+2.34.1
+

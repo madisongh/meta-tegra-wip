@@ -1,0 +1,33 @@
+From 13e84b62ac443b4c389b55793a4c2019fa89f469 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Fri, 6 Feb 2026 18:07:50 +0800
+Subject: [PATCH 16/30] drivers: ufs: constify the third parameter of
+ ufs_tegra_pwr_change_notify()
+
+Based on kernel upstream commit 3bcd901e4257("scsi: ufs: Constify
+the third pwr_change_notify() argument"), it needs to constify the
+third parameter of ufs_tegra_pwr_change_notify().
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/scsi/ufs/ufs-tegra-common.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/scsi/ufs/ufs-tegra-common.c b/drivers/scsi/ufs/ufs-tegra-common.c
+index 2cd8f806..ce24832d 100644
+--- a/drivers/scsi/ufs/ufs-tegra-common.c
++++ b/drivers/scsi/ufs/ufs-tegra-common.c
+@@ -1166,7 +1166,7 @@ static int ufs_tegra_pwr_change_notify(struct ufs_hba *hba,
+ #else
+ static int ufs_tegra_pwr_change_notify(struct ufs_hba *hba,
+ 		enum ufs_notify_change_status status,
+-		struct ufs_pa_layer_attr *dev_max_params,
++		const struct ufs_pa_layer_attr *dev_max_params,
+ 		struct ufs_pa_layer_attr *dev_req_params)
+ #endif
+ {
+-- 
+2.34.1
+

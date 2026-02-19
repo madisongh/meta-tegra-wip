@@ -1,0 +1,38 @@
+From f422e309c1647af8f79102ff24706fd7785af578 Mon Sep 17 00:00:00 2001
+From: Kurt Kiefer <kekiefer@gmail.com>
+Date: Wed, 11 Feb 2026 15:32:20 -0800
+Subject: [PATCH 1/1] nvgpu: Update hrtimer_init to hrtimer_setup
+
+Upstream-Status: Pending
+---
+ drivers/gpu/nvgpu/os/linux/periodic_timer.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/gpu/nvgpu/os/linux/periodic_timer.c b/drivers/gpu/nvgpu/os/linux/periodic_timer.c
+index 8bcb8421a..3974a23da 100644
+--- a/drivers/gpu/nvgpu/os/linux/periodic_timer.c
++++ b/drivers/gpu/nvgpu/os/linux/periodic_timer.c
+@@ -17,6 +17,7 @@
+ #include <nvgpu/bug.h>
+ #include <nvgpu/periodic_timer.h>
+ #include <linux/async.h>
++#include <linux/version.h>
+ 
+ static void async_func(void *data, async_cookie_t cookie)
+ {
+@@ -42,8 +43,12 @@ static enum hrtimer_restart timer_callback(struct hrtimer *os_timer)
+ int nvgpu_periodic_timer_init(struct nvgpu_periodic_timer *timer,
+ 			void (*fn)(void *arg), void *arg)
+ {
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
++	hrtimer_setup(&timer->timer, timer_callback, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
++#else
+ 	hrtimer_init(&timer->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+ 	timer->timer.function = timer_callback;
++#endif
+ 	timer->fn = fn;
+ 	timer->arg = arg;
+ 	timer->interval = ktime_set(0, 0);
+-- 
+2.34.1
+

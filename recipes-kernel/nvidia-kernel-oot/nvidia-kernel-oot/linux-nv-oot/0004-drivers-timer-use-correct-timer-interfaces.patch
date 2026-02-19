@@ -1,0 +1,84 @@
+From c8f937db024c2c6d945a315c9591b1f3d226e41b Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Tue, 3 Feb 2026 14:14:47 +0800
+Subject: [PATCH 04/30] drivers: timer: use correct timer interfaces
+
+Based on kernel upstream commit 41cb08555c41("treewide, timers:
+Rename from_timer() to timer_container_of()") and 8fa7292fee5c("treewide:
+Switch/rename to timer_delete[_sync]()"), it needs to replace the old
+timer interfaces with new ones.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/misc/bluedroid_pm.c             | 2 +-
+ drivers/nvpps/nvpps_main.c              | 4 ++--
+ drivers/tty/serial/wch_35x/wch_serial.c | 2 +-
+ drivers/watchdog/softdog-platform.c     | 2 +-
+ 4 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/misc/bluedroid_pm.c b/drivers/misc/bluedroid_pm.c
+index 41af3943..5283015d 100644
+--- a/drivers/misc/bluedroid_pm.c
++++ b/drivers/misc/bluedroid_pm.c
+@@ -136,7 +136,7 @@ static void bluedroid_pm_timer_expire(struct timer_list *timer)
+ {
+ 
+ 	struct bluedroid_pm_data *bluedroid_pm =
+-				from_timer(bluedroid_pm, timer,
++				timer_container_of(bluedroid_pm, timer,
+ 						bluedroid_pm_timer);
+ 
+ 	/*
+diff --git a/drivers/nvpps/nvpps_main.c b/drivers/nvpps/nvpps_main.c
+index a695a38f..e61d31dc 100644
+--- a/drivers/nvpps/nvpps_main.c
++++ b/drivers/nvpps/nvpps_main.c
+@@ -360,7 +360,7 @@ static void tsc_timer_callback(unsigned long data)
+ #else /* LINUX_VERSION_CODE >= KERNEL_VERSION(4,15,0) */
+ static void tsc_timer_callback(struct timer_list *t)
+ {
+-	struct nvpps_device_data *pdev_data = (struct nvpps_device_data *)from_timer(pdev_data, t, tsc_timer);
++	struct nvpps_device_data *pdev_data = (struct nvpps_device_data *)timer_container_of(pdev_data, t, tsc_timer);
+ #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0) */
+ 	uint32_t tsc_lock_status;
+ 	tsc_lock_status = readl(pdev_data->tsc_reg_map_base + TSC_LOCKING_STATUS_OFFSET);
+@@ -394,7 +394,7 @@ static void nvpps_timer_callback(unsigned long data)
+ #else /* LINUX_VERSION_CODE >= KERNEL_VERSION(4,15,0) */
+ static void nvpps_timer_callback(struct timer_list *t)
+ {
+-        struct nvpps_device_data        *pdev_data = (struct nvpps_device_data *)from_timer(pdev_data, t, timer);
++        struct nvpps_device_data        *pdev_data = (struct nvpps_device_data *)timer_container_of(pdev_data, t, timer);
+ #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0) */
+ 	/* get timestamps for this event */
+ 	nvpps_get_ts(pdev_data, 0);
+diff --git a/drivers/tty/serial/wch_35x/wch_serial.c b/drivers/tty/serial/wch_35x/wch_serial.c
+index b01b0de7..7e1c685e 100644
+--- a/drivers/tty/serial/wch_35x/wch_serial.c
++++ b/drivers/tty/serial/wch_35x/wch_serial.c
+@@ -2119,7 +2119,7 @@ static void wch_ser_set_termios(struct ser_port *port, struct WCHTERMIOS *termio
+ 
+ static void wch_ser_timeout(struct timer_list *t)
+ {
+-    struct wch_ser_port *sp = from_timer(sp, t, timer);
++    struct wch_ser_port *sp = timer_container_of(sp, t, timer);
+     unsigned int timeout;
+     unsigned int iir;
+     iir = READ_UART_IIR(sp);
+diff --git a/drivers/watchdog/softdog-platform.c b/drivers/watchdog/softdog-platform.c
+index 22f5191b..63679013 100644
+--- a/drivers/watchdog/softdog-platform.c
++++ b/drivers/watchdog/softdog-platform.c
+@@ -37,7 +37,7 @@ struct softdog_platform_wdt {
+ /* If the timer expires..  */
+ static void softdog_platform_watchdog_fire(struct timer_list *t)
+ {
+-	struct softdog_platform_wdt *swdt = from_timer(swdt, t, watchdog_ticktock);
++	struct softdog_platform_wdt *swdt = timer_container_of(swdt, t, watchdog_ticktock);
+ 
+ 	if (swdt->is_stopped)
+ 		return;
+-- 
+2.34.1
+

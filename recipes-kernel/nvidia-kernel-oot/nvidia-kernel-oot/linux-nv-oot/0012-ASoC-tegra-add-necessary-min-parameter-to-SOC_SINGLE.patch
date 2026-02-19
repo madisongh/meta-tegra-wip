@@ -1,0 +1,42 @@
+From 7f68e9461e35fb969adaaf76accd0fb90d51927d Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Fri, 6 Feb 2026 10:08:07 +0800
+Subject: [PATCH 12/30] ASoC: tegra: add necessary min parameter to
+ SOC_SINGLE_VALUE()
+
+Based on kernel upstream commit 6db630902727("ASoC: Tidy up
+SOC_DOUBLE_* and SOC_SINGLE_* helpers "), it needs to be add
+necessary min parameter to SOC_SINGLE_VALUE().
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ sound/soc/tegra/tegra186_arad.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/tegra/tegra186_arad.c b/sound/soc/tegra/tegra186_arad.c
+index 4b7078a0..a46765bf 100644
+--- a/sound/soc/tegra/tegra186_arad.c
++++ b/sound/soc/tegra/tegra186_arad.c
+@@ -437,7 +437,7 @@ static ARAD_MUX_ENUM_CTRL_DECL(denominator6,
+ 	.info = tegra186_arad_get_info, \
+ 	.get = tegra186_arad_get_ratio_int, \
+ 	.private_value = SOC_SINGLE_VALUE( \
+-		TEGRA186_ARAD_LANE##id##_RATIO_INTEGER_PART, 0, \
++		TEGRA186_ARAD_LANE##id##_RATIO_INTEGER_PART, 0, 0, \
+ 		TEGRA186_ARAD_LANE_RATIO_INTEGER_PART_MASK, 0, 0) }
+ 
+ #define ARAD_LINE_RATIO_FRAC(id) { \
+@@ -447,7 +447,7 @@ static ARAD_MUX_ENUM_CTRL_DECL(denominator6,
+ 	.info = tegra186_arad_get_info, \
+ 	.get = tegra186_arad_get_ratio_frac,\
+ 	.private_value = SOC_SINGLE_VALUE(\
+-		TEGRA186_ARAD_LANE##id##_RATIO_FRACTIONAL_PART, 0, \
++		TEGRA186_ARAD_LANE##id##_RATIO_FRACTIONAL_PART, 0, 0, \
+ 		TEGRA186_ARAD_LANE_RATIO_FRAC_PART_MASK, 0, 0) }
+ 
+ static const struct snd_kcontrol_new tegra186_arad_controls[] = {
+-- 
+2.34.1
+

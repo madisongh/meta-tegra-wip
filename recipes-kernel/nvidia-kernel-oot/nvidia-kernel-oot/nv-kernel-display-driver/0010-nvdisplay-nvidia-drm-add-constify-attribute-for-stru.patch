@@ -1,0 +1,33 @@
+From 4e508845a75843c7d20bb14f8fb5f934ac2b7c9e Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Thu, 12 Feb 2026 13:18:12 +0800
+Subject: [PATCH 10/10] nvdisplay: nvidia-drm: add constify attribute for
+ struct drm_display_mode instance
+
+Based on kernel upstream commit 26d6fd81916e("drm/connector: make
+mode_valid take a const struct drm_display_mode "), it needs to add
+constify attribute for struct drm_display_mode instance.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ kernel-open/nvidia-drm/nvidia-drm-connector.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel-open/nvidia-drm/nvidia-drm-connector.c b/kernel-open/nvidia-drm/nvidia-drm-connector.c
+index 095563b..ca4e83c 100644
+--- a/kernel-open/nvidia-drm/nvidia-drm-connector.c
++++ b/kernel-open/nvidia-drm/nvidia-drm-connector.c
+@@ -417,7 +417,7 @@ static int nv_drm_connector_get_modes(struct drm_connector *connector)
+ }
+ 
+ static int nv_drm_connector_mode_valid(struct drm_connector    *connector,
+-                                       struct drm_display_mode *mode)
++                                       const struct drm_display_mode *mode)
+ {
+     struct drm_device *dev = connector->dev;
+     struct nv_drm_device *nv_dev = to_nv_device(dev);
+-- 
+2.34.1
+

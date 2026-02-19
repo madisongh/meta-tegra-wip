@@ -1,0 +1,165 @@
+From 54994557381481450ac9fe45d1cb910d3e4f0a4f Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Tue, 3 Feb 2026 14:57:31 +0800
+Subject: [PATCH 05/30] drivers: gpio: add return value for callback set() of
+ struct gpio_chip
+
+Based on kernel upstream commit d9d87d90cc0b("treewide: rename
+GPIO set callbacks back to their original names") and 397a46c9aa33
+("gpio: remove legacy GPIO line value setter callbacks"), it needs to
+add return for callback set() of struct gpio_chip.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/gpio/gpio-max77851.c                |  4 +++-
+ drivers/media/platform/tegra/cdi/cdi_gpio.c | 14 ++++++++------
+ drivers/media/platform/tegra/isc/isc_gpio.c | 14 ++++++++------
+ 3 files changed, 19 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/gpio/gpio-max77851.c b/drivers/gpio/gpio-max77851.c
+index aa584433..9503597a 100644
+--- a/drivers/gpio/gpio-max77851.c
++++ b/drivers/gpio/gpio-max77851.c
+@@ -198,7 +198,7 @@ static int max77851_gpio_set_debounce(struct max77851_gpio *mgpio,
+ 	return ret;
+ }
+ 
+-static void max77851_gpio_set(struct gpio_chip *gc, unsigned int offset,
++static int max77851_gpio_set(struct gpio_chip *gc, unsigned int offset,
+ 			      int value)
+ {
+ 	struct max77851_gpio *mgpio = gpiochip_get_data(gc);
+@@ -211,6 +211,8 @@ static void max77851_gpio_set(struct gpio_chip *gc, unsigned int offset,
+ 				GPIO_CFG1_OUTPUT, val);
+ 	if (ret < 0)
+ 		dev_err(mgpio->dev, "CNFG_GPIO_OUT update failed: %d\n", ret);
++
++	return ret;
+ }
+ 
+ static int max77851_gpio_set_config(struct gpio_chip *gc, unsigned int offset,
+diff --git a/drivers/media/platform/tegra/cdi/cdi_gpio.c b/drivers/media/platform/tegra/cdi/cdi_gpio.c
+index 2871e047..7b253c3e 100644
+--- a/drivers/media/platform/tegra/cdi/cdi_gpio.c
++++ b/drivers/media/platform/tegra/cdi/cdi_gpio.c
+@@ -194,9 +194,9 @@ static int cdi_gpio_get_value(struct gpio_chip *gc, unsigned int off)
+ 	return gpio_val;
+ }
+ 
+-static void cdi_gpio_set_value(struct gpio_chip *gc, unsigned int off, int val)
++static int cdi_gpio_set_value(struct gpio_chip *gc, unsigned int off, int val)
+ {
+-	int idx;
++	int idx, ret;
+ 	struct gpio_chip *tgc = NULL;
+ 	struct cdi_gpio_priv *cdi_gpio = NULL;
+ 	atomic_t *ref_cnt;
+@@ -204,7 +204,7 @@ static void cdi_gpio_set_value(struct gpio_chip *gc, unsigned int off, int val)
+ 
+ 	cdi_gpio = gpiochip_get_data(gc);
+ 	if (!cdi_gpio)
+-		return;
++		return -EINVAL;
+ 
+ 	mutex_lock(&cdi_gpio->mutex);
+ 
+@@ -214,7 +214,7 @@ static void cdi_gpio_set_value(struct gpio_chip *gc, unsigned int off, int val)
+ 	idx = cdi_gpio_get_index(dev, cdi_gpio, off);
+ 	if (idx < 0) {
+ 		mutex_unlock(&cdi_gpio->mutex);
+-		return;
++		return idx;
+ 	}
+ 	idx = array_index_nospec(idx, cdi_gpio->pdata.max_gpio);
+ 
+@@ -224,14 +224,14 @@ static void cdi_gpio_set_value(struct gpio_chip *gc, unsigned int off, int val)
+ 	case 0:
+ 		if ((atomic_read(ref_cnt) > 0) &&
+ 			atomic_dec_and_test(ref_cnt)) {
+-			tgc->set(tgc, off, val);
++			ret = tgc->set(tgc, off, val);
+ 		}
+ 		dev_info(dev, "%s: gpio idx: %d, val to set: %d, refcount: %d\n",
+ 			__func__, idx, val, atomic_read(ref_cnt));
+ 		break;
+ 	case 1:
+ 		if (!atomic_inc_and_test(ref_cnt))
+-			tgc->set(tgc, off, val);
++			ret = tgc->set(tgc, off, val);
+ 
+ 		dev_info(dev, "%s: gpio idx: %d, val to set: %d, refcount: %d\n",
+ 			__func__, idx, val, atomic_read(ref_cnt));
+@@ -243,6 +243,8 @@ static void cdi_gpio_set_value(struct gpio_chip *gc, unsigned int off, int val)
+ 	}
+ 
+ 	mutex_unlock(&cdi_gpio->mutex);
++
++	return ret;
+ }
+ 
+ static int cdi_gpio_probe(struct platform_device *pdev)
+diff --git a/drivers/media/platform/tegra/isc/isc_gpio.c b/drivers/media/platform/tegra/isc/isc_gpio.c
+index d8b557a7..2a1f1693 100644
+--- a/drivers/media/platform/tegra/isc/isc_gpio.c
++++ b/drivers/media/platform/tegra/isc/isc_gpio.c
+@@ -194,9 +194,9 @@ static int isc_gpio_get_value(struct gpio_chip *gc, unsigned int off)
+ 	return gpio_val;
+ }
+ 
+-static void isc_gpio_set_value(struct gpio_chip *gc, unsigned int off, int val)
++static int isc_gpio_set_value(struct gpio_chip *gc, unsigned int off, int val)
+ {
+-	int idx;
++	int idx, ret;
+ 	struct gpio_chip *tgc = NULL;
+ 	struct isc_gpio_priv *isc_gpio = NULL;
+ 	atomic_t *ref_cnt;
+@@ -204,7 +204,7 @@ static void isc_gpio_set_value(struct gpio_chip *gc, unsigned int off, int val)
+ 
+ 	isc_gpio = gpiochip_get_data(gc);
+ 	if (!isc_gpio)
+-		return;
++		return -EINVAL;
+ 
+ 	mutex_lock(&isc_gpio->mutex);
+ 
+@@ -214,7 +214,7 @@ static void isc_gpio_set_value(struct gpio_chip *gc, unsigned int off, int val)
+ 	idx = isc_gpio_get_index(dev, isc_gpio, off);
+ 	if (idx < 0) {
+ 		mutex_unlock(&isc_gpio->mutex);
+-		return;
++		return idx;
+ 	}
+ 	idx = array_index_nospec(idx, isc_gpio->pdata.max_gpio);
+ 
+@@ -224,14 +224,14 @@ static void isc_gpio_set_value(struct gpio_chip *gc, unsigned int off, int val)
+ 	case 0:
+ 		if ((atomic_read(ref_cnt) > 0) &&
+ 			atomic_dec_and_test(ref_cnt)) {
+-			tgc->set(tgc, off, val);
++			ret = tgc->set(tgc, off, val);
+ 		}
+ 		dev_info(dev, "%s: gpio idx: %d, val to set: %d, refcount: %d\n",
+ 			__func__, idx, val, atomic_read(ref_cnt));
+ 		break;
+ 	case 1:
+ 		if (!atomic_inc_and_test(ref_cnt))
+-			tgc->set(tgc, off, val);
++			ret = tgc->set(tgc, off, val);
+ 
+ 		dev_info(dev, "%s: gpio idx: %d, val to set: %d, refcount: %d\n",
+ 			__func__, idx, val, atomic_read(ref_cnt));
+@@ -243,6 +243,8 @@ static void isc_gpio_set_value(struct gpio_chip *gc, unsigned int off, int val)
+ 	}
+ 
+ 	mutex_unlock(&isc_gpio->mutex);
++
++	return ret;
+ }
+ 
+ static int isc_gpio_probe(struct platform_device *pdev)
+-- 
+2.34.1
+

@@ -1,0 +1,29 @@
+From 21a3b8c6bfb0cd6b88c51c3a842a14b1418930a5 Mon Sep 17 00:00:00 2001
+From: Kurt Kiefer <kekiefer@gmail.com>
+Date: Wed, 11 Feb 2026 15:22:24 -0800
+Subject: [PATCH 1/2] nvgpu: Update MODULE_IMPORT_NS macro arguemnt to string
+
+Upstream-Status: Pending
+---
+ drivers/gpu/nvgpu/os/linux/module.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/gpu/nvgpu/os/linux/module.c b/drivers/gpu/nvgpu/os/linux/module.c
+index b132884bc..ae083a06c 100644
+--- a/drivers/gpu/nvgpu/os/linux/module.c
++++ b/drivers/gpu/nvgpu/os/linux/module.c
+@@ -2128,7 +2128,11 @@ static void __exit gk20a_exit(void)
+ }
+ 
+ #ifdef MODULE_IMPORT_NS
++#if defined(NV_MODULE_IMPORT_NS_CALLS_STRINGIFY)
+ MODULE_IMPORT_NS(DMA_BUF);
++#else
++MODULE_IMPORT_NS("DMA_BUF");
++#endif
+ #endif
+ #ifdef CONFIG_GK20A_DEVFREQ
+ MODULE_SOFTDEP("pre: governor_pod_scaling");
+-- 
+2.34.1
+

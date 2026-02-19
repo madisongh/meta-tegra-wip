@@ -1,0 +1,32 @@
+From 4cd2de81e2d3d79f1487ad4107163b6d153ed3a9 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Wed, 11 Feb 2026 18:48:06 +0800
+Subject: [PATCH 06/10] nvdisplay: nvidia: check importer operations directly
+
+Based on kernel upstream commit de68b17d5d07("dma-buf: dma-buf:
+stop mapping sg_tables on attach v2"), maybe checking importer
+operations directly is a reasonable solution.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ kernel-open/nvidia/nv-dmabuf.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel-open/nvidia/nv-dmabuf.c b/kernel-open/nvidia/nv-dmabuf.c
+index 1f09324..18d76d8 100644
+--- a/kernel-open/nvidia/nv-dmabuf.c
++++ b/kernel-open/nvidia/nv-dmabuf.c
+@@ -783,7 +783,7 @@ nv_dma_buf_map(
+ #if defined(NV_DMA_BUF_HAS_DYNAMIC_ATTACHMENT) && \
+     defined(NV_DMA_BUF_ATTACHMENT_HAS_PEER2PEER)
+     if (!priv->nv->coherent &&
+-        dma_buf_attachment_is_dynamic(attachment) &&
++        attachment->importer_ops &&
+         !attachment->peer2peer)
+     {
+         nv_printf(NV_DBG_ERRORS,
+-- 
+2.34.1
+

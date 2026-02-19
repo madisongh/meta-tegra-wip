@@ -1,0 +1,33 @@
+From 198cbf8c8f335e0e0ba96e004d59f7e947150248 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Wed, 11 Feb 2026 12:03:43 +0800
+Subject: [PATCH 28/30] drivers: nvmap: remove cache_sgt_mapping
+
+Based on kernel upstream commit b72f66f22c0e("dma-buf: drop
+caching of sg_tables"), it needs to remove cache_sgt_mapping.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/video/tegra/nvmap/nvmap_dmabuf.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/drivers/video/tegra/nvmap/nvmap_dmabuf.c b/drivers/video/tegra/nvmap/nvmap_dmabuf.c
+index dd0db106..dc933752 100644
+--- a/drivers/video/tegra/nvmap/nvmap_dmabuf.c
++++ b/drivers/video/tegra/nvmap/nvmap_dmabuf.c
+@@ -561,10 +561,6 @@ static struct dma_buf_ops nvmap_dma_buf_ops = {
+ 	.mmap		= nvmap_dmabuf_mmap,
+ 	.vmap		= nvmap_dmabuf_vmap,
+ 	.vunmap		= nvmap_dmabuf_vunmap,
+-#if LINUX_VERSION_CODE > KERNEL_VERSION(5, 4, 0)
+-	.cache_sgt_mapping = true,
+-#endif
+-
+ };
+ 
+ static char dmabuf_name[] = "nvmap_dmabuf";
+-- 
+2.34.1
+

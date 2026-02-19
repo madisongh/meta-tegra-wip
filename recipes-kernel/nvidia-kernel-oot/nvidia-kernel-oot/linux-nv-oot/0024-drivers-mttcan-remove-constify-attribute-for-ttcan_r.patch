@@ -1,0 +1,47 @@
+From d37039342c579a625f244d84d7796a1c36185096 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Tue, 10 Feb 2026 14:15:34 +0800
+Subject: [PATCH 24/30] drivers: mttcan: remove constify attribute for
+ ttcan_read_ts_cntr()
+
+Based on kernel upstream commit e78f70bad29c("time/timecounter:
+Fix the lie that struct cyclecounter is const"), it needs to remove
+constify attribute for ttcan_read_ts_cntr()
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/net/can/mttcan/hal/m_ttcan.c     | 2 +-
+ drivers/net/can/mttcan/include/m_ttcan.h | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/can/mttcan/hal/m_ttcan.c b/drivers/net/can/mttcan/hal/m_ttcan.c
+index 9114c27f..6026fbc4 100644
+--- a/drivers/net/can/mttcan/hal/m_ttcan.c
++++ b/drivers/net/can/mttcan/hal/m_ttcan.c
+@@ -1079,7 +1079,7 @@ int ttcan_controller_init(struct ttcan_controller *ttcan, u32 irq_flag,
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0)
+ cycle_t ttcan_read_ts_cntr(const struct cyclecounter *ccnt)
+ #else
+-u64 ttcan_read_ts_cntr(const struct cyclecounter *ccnt)
++u64 ttcan_read_ts_cntr(struct cyclecounter *ccnt)
+ #endif
+ {
+ 	struct mttcan_priv *priv = container_of(ccnt, struct mttcan_priv, cc);
+diff --git a/drivers/net/can/mttcan/include/m_ttcan.h b/drivers/net/can/mttcan/include/m_ttcan.h
+index 6f55f49f..293f9754 100644
+--- a/drivers/net/can/mttcan/include/m_ttcan.h
++++ b/drivers/net/can/mttcan/include/m_ttcan.h
+@@ -564,7 +564,7 @@ int add_event_controller_list(struct ttcan_controller *ttcan,
+ 				struct mttcan_tx_evt_element *txevt,
+ 				struct list_head *evt_q);
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
+-u64 ttcan_read_ts_cntr(const struct cyclecounter *ccnt);
++u64 ttcan_read_ts_cntr(struct cyclecounter *ccnt);
+ #else
+ cycle_t ttcan_read_ts_cntr(const struct cyclecounter *ccnt);
+ #endif
+-- 
+2.34.1
+

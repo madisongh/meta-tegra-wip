@@ -1,0 +1,37 @@
+From ca5558c8840d1d398acb4fd9092a413eb5c401e2 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Wed, 4 Feb 2026 12:20:03 +0800
+Subject: [PATCH 08/30] drivers: virt: replace work_on_cpu_safe() with
+ work_on_cpu()
+
+Based on kernel upstream commit fc2898ea793a("workqueue: Remove
+unused work_on_cpu_safe"), it needs to replace work_on_cpu_safe()
+with work_on_cpu().
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/virt/tegra/tegra_hv_vcpu_yield.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/virt/tegra/tegra_hv_vcpu_yield.c b/drivers/virt/tegra/tegra_hv_vcpu_yield.c
+index fb263885..f16a59d4 100644
+--- a/drivers/virt/tegra/tegra_hv_vcpu_yield.c
++++ b/drivers/virt/tegra/tegra_hv_vcpu_yield.c
+@@ -201,10 +201,10 @@ static long tegra_hv_vcpu_yield_ioctl(struct file *filp, unsigned int cmd,
+ 			if (data->timeout_us > max_timeout_us)
+ 				data->timeout_us = max_timeout_us;
+ 
+-			ret = work_on_cpu_safe(data->vcpu, vcpu_yield_func,
++			ret = work_on_cpu(data->vcpu, vcpu_yield_func,
+ 					(void *)data);
+ 			if (ret)
+-				pr_err("work_on_cpu_safe Failed :%d\n", ret);
++				pr_err("work_on_cpu Failed :%d\n", ret);
+ 		}
+ 
+ 		mutex_lock(&data->mutex_lock);
+-- 
+2.34.1
+

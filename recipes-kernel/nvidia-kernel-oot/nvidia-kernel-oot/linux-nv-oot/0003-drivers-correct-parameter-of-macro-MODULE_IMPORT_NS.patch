@@ -1,0 +1,52 @@
+From 0b50747f44ee78edd2c510dace6958ad0a31d6fc Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Tue, 3 Feb 2026 11:24:24 +0800
+Subject: [PATCH 03/30] drivers: correct parameter of macro MODULE_IMPORT_NS
+
+Based on kernel upstream commit cdd30ebb1b9f("module: Convert
+symbol namespace to string literal"), it needs to pass a string as
+parameter for macro MODULE_IMPORT_NS.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ drivers/misc/nvscic2c-pcie/stream-extensions.c | 4 ++++
+ drivers/video/tegra/nvmap/nvmap_ioctl.c        | 4 ++++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/drivers/misc/nvscic2c-pcie/stream-extensions.c b/drivers/misc/nvscic2c-pcie/stream-extensions.c
+index ac8da2f6..f47693dc 100644
+--- a/drivers/misc/nvscic2c-pcie/stream-extensions.c
++++ b/drivers/misc/nvscic2c-pcie/stream-extensions.c
+@@ -30,7 +30,11 @@
+ #include "vmap.h"
+ 
+ #if defined(CONFIG_TEGRA_SYSTEM_TYPE_ACK)
++#if defined(NV_MODULE_IMPORT_NS_CALLS_STRINGIFY)
+ MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
++#else
++MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
++#endif
+ #endif
+ 
+ /* forward declaration.*/
+diff --git a/drivers/video/tegra/nvmap/nvmap_ioctl.c b/drivers/video/tegra/nvmap/nvmap_ioctl.c
+index 0bd10bed..9b4fa333 100644
+--- a/drivers/video/tegra/nvmap/nvmap_ioctl.c
++++ b/drivers/video/tegra/nvmap/nvmap_ioctl.c
+@@ -45,7 +45,11 @@
+ #endif
+ 
+ #if defined(CONFIG_TEGRA_SYSTEM_TYPE_ACK)
++#if defined(NV_MODULE_IMPORT_NS_CALLS_STRINGIFY)
+ MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
++#else
++MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
++#endif
+ #endif
+ 
+ extern struct device tegra_vpr_dev;
+-- 
+2.34.1
+

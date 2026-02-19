@@ -1,0 +1,110 @@
+From ccb69b7bc5f8ed841bbbce196684d9b8455d5379 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Wed, 11 Feb 2026 17:53:58 +0800
+Subject: [PATCH 04/10] nvdisplay: Kbuild: add parameters into XXX_CFLAGS
+
+Add parameters into XXX_CFLAGS to fix build errors and warnings.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ kernel-open/nvidia-drm/nvidia-drm.Kbuild       | 11 +++++++++++
+ .../nvidia-modeset/nvidia-modeset.Kbuild       | 18 ++++++++++++++++--
+ kernel-open/nvidia/nvidia.Kbuild               | 18 ++++++++++++++++++
+ 3 files changed, 45 insertions(+), 2 deletions(-)
+
+diff --git a/kernel-open/nvidia-drm/nvidia-drm.Kbuild b/kernel-open/nvidia-drm/nvidia-drm.Kbuild
+index f239dc3..59da983 100644
+--- a/kernel-open/nvidia-drm/nvidia-drm.Kbuild
++++ b/kernel-open/nvidia-drm/nvidia-drm.Kbuild
+@@ -40,8 +40,19 @@ NV_KERNEL_MODULE_TARGETS += $(NVIDIA_DRM_KO)
+ #
+ 
+ NVIDIA_DRM_CFLAGS += -I$(src)/nvidia-drm
++NVIDIA_DRM_CFLAGS += -I$(src)/common/inc
++NVIDIA_DRM_CFLAGS += -I$(src)
++NVIDIA_DRM_CFLAGS += -DNV_VERSION_STRING=\"540.5.0\"
++NVIDIA_DRM_CFLAGS += -DNV_SPECTRE_V2=0
++NVIDIA_DRM_CFLAGS += -Wno-unused-function
++NVIDIA_DRM_CFLAGS += -I$(NV_OOT_SOURCES)/include
++NVIDIA_DRM_CFLAGS += -Wno-old-style-declaration
+ NVIDIA_DRM_CFLAGS += -UDEBUG -U_DEBUG -DNDEBUG -DNV_BUILD_MODULE_INSTANCES=0
+ 
++ifneq ($(SYSSRCHOST1X),)
++ NVIDIA_DRM_CFLAGS += -I$(SYSSRCHOST1X)
++endif
++
+ $(call ASSIGN_PER_OBJ_CFLAGS, $(NVIDIA_DRM_OBJECTS), $(NVIDIA_DRM_CFLAGS))
+ 
+ #
+diff --git a/kernel-open/nvidia-modeset/nvidia-modeset.Kbuild b/kernel-open/nvidia-modeset/nvidia-modeset.Kbuild
+index 4fbb1f3..0d16638 100644
+--- a/kernel-open/nvidia-modeset/nvidia-modeset.Kbuild
++++ b/kernel-open/nvidia-modeset/nvidia-modeset.Kbuild
+@@ -41,7 +41,7 @@ NVIDIA_MODESET_BINARY_OBJECT := $(src)/nvidia-modeset/nv-modeset-kernel.o_binary
+ NVIDIA_MODESET_BINARY_OBJECT_O := nvidia-modeset/nv-modeset-kernel.o
+ 
+ quiet_cmd_symlink = SYMLINK $@
+-cmd_symlink = ln -sf $< $@
++cmd_symlink = ln -sf $(notdir $<) $@
+ 
+ targets += $(NVIDIA_MODESET_BINARY_OBJECT_O)
+ 
+@@ -55,9 +55,23 @@ nvidia-modeset-y += $(NVIDIA_MODESET_BINARY_OBJECT_O)
+ # Define nvidia-modeset.ko-specific CFLAGS.
+ #
+ 
+-NVIDIA_MODESET_CFLAGS += -I$(src)/nvidia-modeset -I$(src)/common/inc
++NVIDIA_MODESET_CFLAGS += -I$(src)/nvidia-modeset
++NVIDIA_MODESET_CFLAGS += -I$(src)/common/inc
++NVIDIA_MODESET_CFLAGS += -I$(src)
++NVIDIA_MODESET_CFLAGS += -I$(NV_OOT_SOURCES)/include
++NVIDIA_MODESET_CFLAGS += -DNV_LINUX
++NVIDIA_MODESET_CFLAGS += -DNV_KERNEL_INTERFACE_LAYER
++NVIDIA_MODESET_CFLAGS += -DNV_VERSION_STRING=\"540.5.0\"
++NVIDIA_MODESET_CFLAGS += -DNV_SPECTRE_V2=0
++NVIDIA_MODESET_CFLAGS += -Wno-old-style-declaration
++NVIDIA_MODESET_CFLAGS += -Wno-missing-prototypes
++NVIDIA_MODESET_CFLAGS += -Wno-missing-declarations
+ NVIDIA_MODESET_CFLAGS += -UDEBUG -U_DEBUG -DNDEBUG -DNV_BUILD_MODULE_INSTANCES=0
+ 
++ifneq ($(SYSSRCHOST1X),)
++ NVIDIA_MODESET_CFLAGS += -I$(SYSSRCHOST1X)
++endif
++
+ $(call ASSIGN_PER_OBJ_CFLAGS, $(NVIDIA_MODESET_OBJECTS), $(NVIDIA_MODESET_CFLAGS))
+ 
+ 
+diff --git a/kernel-open/nvidia/nvidia.Kbuild b/kernel-open/nvidia/nvidia.Kbuild
+index 740c867..05d27ab 100644
+--- a/kernel-open/nvidia/nvidia.Kbuild
++++ b/kernel-open/nvidia/nvidia.Kbuild
+@@ -56,6 +56,24 @@ nvidia-y += $(NVIDIA_BINARY_OBJECT_O)
+ #
+ 
+ NVIDIA_CFLAGS += -I$(src)/nvidia
++NVIDIA_CFLAGS += -I$(src)/common/inc
++NVIDIA_CFLAGS += -I$(src)
++NVIDIA_CFLAGS += -DNV_LINUX
++NVIDIA_CFLAGS += -DNV_KERNEL_INTERFACE_LAYER
++NVIDIA_CFLAGS += -DNV_VERSION_STRING=\"540.5.0\"
++NVIDIA_CFLAGS += -DNVRM
++NVIDIA_CFLAGS += -DNV_SPECTRE_V2=0
++NVIDIA_CFLAGS += -Wno-missing-prototypes
++NVIDIA_CFLAGS += -Wno-unused-function
++NVIDIA_CFLAGS += -Wno-empty-body
++NVIDIA_CFLAGS += -Wno-missing-declarations
++NVIDIA_CFLAGS += -Wno-old-style-declaration
++NVIDIA_CFLAGS += -Wno-unused-variable
++NVIDIA_CFLAGS += -Wno-enum-int-mismatch
++NVIDIA_CFLAGS += -Wno-old-style-declaration
++NVIDIA_CFLAGS += -Wno-cpp
++NVIDIA_CFLAGS += -I$(NV_OOT_SOURCES)/include
++NVIDIA_CFLAGS += -Wno-expansion-to-defined
+ NVIDIA_CFLAGS += -DNVIDIA_UNDEF_LEGACY_BIT_MACROS
+ 
+ ifeq ($(NV_BUILD_TYPE),release)
+-- 
+2.34.1
+

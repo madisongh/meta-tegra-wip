@@ -1,0 +1,31 @@
+From 3a854019facb74230957a176615b18e8f386bd25 Mon Sep 17 00:00:00 2001
+From: Meng Li <Meng.Li@windriver.com>
+Date: Thu, 12 Feb 2026 13:11:09 +0800
+Subject: [PATCH 09/10] nvdisplay: nvidia-drm: remove unused date member
+
+Based on kernel upstream commit cb2e1c2136f7("drm: remove driver
+date from struct drm_driver and all drivers "), it needs to remove unused
+date member.
+
+Upstream-Status: Pending
+
+Signed-off-by: Meng Li <Meng.Li@windriver.com>
+---
+ kernel-open/nvidia-drm/nvidia-drm-drv.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/kernel-open/nvidia-drm/nvidia-drm-drv.c b/kernel-open/nvidia-drm/nvidia-drm-drv.c
+index b419296..2a67cc3 100644
+--- a/kernel-open/nvidia-drm/nvidia-drm-drv.c
++++ b/kernel-open/nvidia-drm/nvidia-drm-drv.c
+@@ -1945,7 +1945,6 @@ static struct drm_driver nv_drm_driver = {
+     .name                   = "nvidia-drm",
+ 
+     .desc                   = "NVIDIA DRM driver",
+-    .date                   = "20160202",
+ 
+ #if defined(NV_DRM_DRIVER_HAS_DEVICE_LIST)
+     .device_list            = LIST_HEAD_INIT(nv_drm_driver.device_list),
+-- 
+2.34.1
+
