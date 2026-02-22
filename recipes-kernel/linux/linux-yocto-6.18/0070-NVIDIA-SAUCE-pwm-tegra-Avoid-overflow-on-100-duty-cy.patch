@@ -1,0 +1,53 @@
+From 7234b761770fa98248d16935714965ac4078075e Mon Sep 17 00:00:00 2001
+From: Yi-Wei Wang <yiweiw@nvidia.com>
+Date: Fri, 23 Aug 2024 14:04:24 +0800
+Subject: [PATCH 70/95] NVIDIA: SAUCE: pwm: tegra: Avoid overflow on 100% duty
+ cycle
+
+Bits[31:16] are reserved for PWM field of Tegra264 PWM controller, so
+the PWM ranges from 0 to 65535. To avoid the overflow happening when
+the calculated PWM is 65536, this change decrements it by 1 before
+programming to PWM field.
+
+http://nvbugs/4545733
+http://nvbugs/4748816
+
+Upstream-Status: Backport
+Signed-off-by: Yi-Wei Wang <yiweiw@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit bb9ab2ba7fdf65cd6790f5328025b8c97ea2e2f2)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/pwm/pwm-tegra.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/pwm/pwm-tegra.c b/drivers/pwm/pwm-tegra.c
+index 6acf3a9bb214..c98e9fb5343c 100644
+--- a/drivers/pwm/pwm-tegra.c
++++ b/drivers/pwm/pwm-tegra.c
+@@ -91,6 +91,7 @@
+ 
+ #define DEFAULT_PWM_DEPTH 255
+ #define PWM_ENABLE	(1 << 31)
++#define REG_WIDTH 32
+ 
+ struct tegra_pwm_soc {
+ 	unsigned int channel_offset;
+@@ -169,6 +170,11 @@ static int tegra_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
+ 	pwm_f = (u32)DIV_ROUND_CLOSEST_ULL(duty_ns * (1 + pc->pwm_depth),
+ 					   period_ns);
+ 
++	/* Avoid overflow on 100% duty cycle */
++	if (pwm_f == 1 + pc->pwm_depth)
++		if (duty_s + duty_w == REG_WIDTH)
++			--pwm_f;
++
+ 	/*
+ 	 * required_clk_rate is a reference rate for source clock and
+ 	 * it is derived based on user requested period.
+-- 
+2.43.0
+

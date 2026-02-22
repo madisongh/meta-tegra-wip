@@ -1,0 +1,46 @@
+From b4e90715edbd7eca039803c979b1e23681792ecd Mon Sep 17 00:00:00 2001
+From: Shardar Shariff Md <smohammed@nvidia.com>
+Date: Fri, 9 Mar 2018 00:49:38 +0530
+Subject: [PATCH 17/95] NVIDIA: SAUCE: i2c: core: skip prod-settings node
+ during i2c device registration
+
+BugLink: https://bugs.launchpad.net/bugs/2072591
+
+Skip prod-settings node during i2c device registration as
+prod-settings is not i2c device
+
+http://nvbugs/200211824
+http://nvbugs/200385931
+
+Upstream-Status: Backport
+Signed-off-by: Shardar Shariff Md <smohammed@nvidia.com>
+Tested-by: Akhil R <akhilrajeev@nvidia.com>
+Reviewed-by: Akhil R <akhilrajeev@nvidia.com>
+Reviewed-by: Laxman Dewangan <ldewangan@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 01469c29f06fcb8496460daaf45b6bccc953c879)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/i2c/i2c-core-of.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/i2c/i2c-core-of.c b/drivers/i2c/i2c-core-of.c
+index eb7fb202355f..9adb1b886e79 100644
+--- a/drivers/i2c/i2c-core-of.c
++++ b/drivers/i2c/i2c-core-of.c
+@@ -97,6 +97,9 @@ void of_i2c_register_devices(struct i2c_adapter *adap)
+ 		bus = of_node_get(adap->dev.of_node);
+ 
+ 	for_each_available_child_of_node(bus, node) {
++		if (!strcmp(node->name, "prod-settings"))
++			continue;
++
+ 		if (of_node_test_and_set_flag(node, OF_POPULATED))
+ 			continue;
+ 
+-- 
+2.43.0
+

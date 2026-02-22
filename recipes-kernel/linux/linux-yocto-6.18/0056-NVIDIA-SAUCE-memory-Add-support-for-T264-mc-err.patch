@@ -1,0 +1,1739 @@
+From 0baf5efbd5011ba31cbadb1a060b025443a344b0 Mon Sep 17 00:00:00 2001
+From: Ketan Patil <ketanp@nvidia.com>
+Date: Tue, 18 Jun 2024 06:13:47 +0000
+Subject: [PATCH 56/95] NVIDIA: SAUCE: memory: Add support for T264 mc-err
+
+Add support for mc-err logging for T264 in upstream mc driver.
+- Add mc-error handling flow for MCF, HUB, HUBC, SBS and MC Channel.
+- Each of these components have different interrupt lines for mc-err.
+- Register interrupt handlers for interrupts from these different MSS
+components.
+- Introduce new SOC specific fields in tegra_mc_soc.
+
+http://nvbugs/4655916
+
+Upstream-Status: Backport
+Signed-off-by: Ketan Patil <ketanp@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 4ef740cae9a684625284b6f255197a6f4ac02ac7)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/memory/tegra/mc.c       | 116 ++--
+ drivers/memory/tegra/mc.h       | 134 +++--
+ drivers/memory/tegra/tegra114.c |   2 +
+ drivers/memory/tegra/tegra124.c |   4 +
+ drivers/memory/tegra/tegra186.c |  22 +-
+ drivers/memory/tegra/tegra194.c |   2 +
+ drivers/memory/tegra/tegra20.c  |  11 +-
+ drivers/memory/tegra/tegra210.c |   2 +
+ drivers/memory/tegra/tegra234.c |   2 +
+ drivers/memory/tegra/tegra264.c | 945 ++++++++++++++++++++++++++++++--
+ drivers/memory/tegra/tegra30.c  |   2 +
+ include/soc/tegra/mc.h          |  31 +-
+ 12 files changed, 1146 insertions(+), 127 deletions(-)
+
+diff --git a/drivers/memory/tegra/mc.c b/drivers/memory/tegra/mc.c
+index c29203c5a014..48d99c3ca915 100644
+--- a/drivers/memory/tegra/mc.c
++++ b/drivers/memory/tegra/mc.c
+@@ -56,6 +56,24 @@ static const struct of_device_id tegra_mc_of_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, tegra_mc_of_match);
+ 
++const struct tegra_mc_regs tegra20_mc_regs = {
++	.mc_err_status_reg = 0x08,
++	.mc_err_add_reg = 0x0c,
++	.mc_err_add_hi_reg = 0x11fc,
++	.mc_err_vpr_status_reg = 0x654,
++	.mc_err_vpr_add_reg = 0x658,
++	.mc_err_sec_status_reg = 0x67c,
++	.mc_err_sec_add_reg = 0x680,
++	.mc_err_mts_status_reg = 0x9b0,
++	.mc_err_mts_add_reg = 0x9b4,
++	.mc_err_gen_co_status_reg = 0xc00,
++	.mc_err_gen_co_add_reg = 0xc04,
++	.mc_err_route_status_reg = 0x9c0,
++	.mc_err_route_add_reg = 0x9c4,
++	.mc_addr_hi_mask = 0x3,
++	.mc_err_status_type_mask = (0x7 << 28),
++};
++
+ static void tegra_mc_devm_action_put_device(void *data)
+ {
+ 	struct tegra_mc *mc = data;
+@@ -532,9 +550,12 @@ int tegra30_mc_probe(struct tegra_mc *mc)
+ 	return 0;
+ }
+ 
++static irq_handler_t tegra30_mc_irq_handlers = tegra30_mc_handle_irq;
++
+ const struct tegra_mc_ops tegra30_mc_ops = {
+ 	.probe = tegra30_mc_probe,
+-	.handle_irq = tegra30_mc_handle_irq,
++	.handle_irq = &tegra30_mc_irq_handlers,
++	.num_interrupts = 1,
+ };
+ #endif
+ 
+@@ -584,7 +605,7 @@ irqreturn_t tegra30_mc_handle_irq(int irq, void *data)
+ 		return IRQ_NONE;
+ 
+ 	for_each_set_bit(bit, &status, 32) {
+-		const char *error = tegra_mc_status_names[bit] ?: "unknown";
++		const char *error = tegra20_mc_status_names[bit] ?: "unknown";
+ 		const char *client = "unknown", *desc;
+ 		const char *direction, *secure;
+ 		u32 status_reg, addr_reg;
+@@ -600,37 +621,37 @@ irqreturn_t tegra30_mc_handle_irq(int irq, void *data)
+ 
+ 		switch (intmask) {
+ 		case MC_INT_DECERR_VPR:
+-			status_reg = MC_ERR_VPR_STATUS;
+-			addr_reg = MC_ERR_VPR_ADR;
++			status_reg = mc->soc->mc_regs->mc_err_vpr_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_vpr_add_reg;
+ 			break;
+ 
+ 		case MC_INT_SECERR_SEC:
+-			status_reg = MC_ERR_SEC_STATUS;
+-			addr_reg = MC_ERR_SEC_ADR;
++			status_reg =  mc->soc->mc_regs->mc_err_sec_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_sec_add_reg;
+ 			break;
+ 
+ 		case MC_INT_DECERR_MTS:
+-			status_reg = MC_ERR_MTS_STATUS;
+-			addr_reg = MC_ERR_MTS_ADR;
++			status_reg = mc->soc->mc_regs->mc_err_mts_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_mts_add_reg;
+ 			break;
+ 
+ 		case MC_INT_DECERR_GENERALIZED_CARVEOUT:
+-			status_reg = MC_ERR_GENERALIZED_CARVEOUT_STATUS;
+-			addr_reg = MC_ERR_GENERALIZED_CARVEOUT_ADR;
++			status_reg = mc->soc->mc_regs->mc_err_gen_co_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_gen_co_add_reg;
+ 			break;
+ 
+ 		case MC_INT_DECERR_ROUTE_SANITY:
+-			status_reg = MC_ERR_ROUTE_SANITY_STATUS;
+-			addr_reg = MC_ERR_ROUTE_SANITY_ADR;
++			status_reg = mc->soc->mc_regs->mc_err_route_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_route_add_reg;
+ 			break;
+ 
+ 		default:
+-			status_reg = MC_ERR_STATUS;
+-			addr_reg = MC_ERR_ADR;
++			status_reg = mc->soc->mc_regs->mc_err_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_add_reg;
+ 
+ #ifdef CONFIG_PHYS_ADDR_T_64BIT
+ 			if (mc->soc->has_addr_hi_reg)
+-				addr_hi_reg = MC_ERR_ADR_HI;
++				addr_hi_reg = mc->soc->mc_regs->mc_err_add_hi_reg;
+ #endif
+ 			break;
+ 		}
+@@ -649,7 +670,7 @@ irqreturn_t tegra30_mc_handle_irq(int irq, void *data)
+ 					addr = mc_readl(mc, addr_hi_reg);
+ 			} else {
+ 				addr = ((value >> MC_ERR_STATUS_ADR_HI_SHIFT) &
+-					MC_ERR_STATUS_ADR_HI_MASK);
++					mc->soc->mc_regs->mc_addr_hi_mask);
+ 			}
+ 			addr <<= 32;
+ 		}
+@@ -674,11 +695,11 @@ irqreturn_t tegra30_mc_handle_irq(int irq, void *data)
+ 			}
+ 		}
+ 
+-		type = (value & MC_ERR_STATUS_TYPE_MASK) >>
++		type = (value & mc->soc->mc_regs->mc_err_status_type_mask) >>
+ 		       MC_ERR_STATUS_TYPE_SHIFT;
+-		desc = tegra_mc_error_names[type];
++		desc = tegra20_mc_error_names[type];
+ 
+-		switch (value & MC_ERR_STATUS_TYPE_MASK) {
++		switch (value & mc->soc->mc_regs->mc_err_status_type_mask) {
+ 		case MC_ERR_STATUS_TYPE_INVALID_SMMU_PAGE:
+ 			perm[0] = ' ';
+ 			perm[1] = '[';
+@@ -731,7 +752,7 @@ irqreturn_t tegra30_mc_handle_irq(int irq, void *data)
+ 	return IRQ_HANDLED;
+ }
+ 
+-const char *const tegra_mc_status_names[32] = {
++const char *const tegra20_mc_status_names[32] = {
+ 	[ 1] = "External interrupt",
+ 	[ 6] = "EMEM address decode error",
+ 	[ 7] = "GART page fault",
+@@ -746,7 +767,7 @@ const char *const tegra_mc_status_names[32] = {
+ 	[20] = "Route Sanity error",
+ };
+ 
+-const char *const tegra_mc_error_names[8] = {
++const char *const tegra20_mc_error_names[8] = {
+ 	[2] = "EMEM decode error",
+ 	[3] = "TrustZone violation",
+ 	[4] = "Carveout violation",
+@@ -941,25 +962,52 @@ static int tegra_mc_probe(struct platform_device *pdev)
+ 	tegra_mc_num_channel_enabled(mc);
+ 
+ 	if (mc->soc->ops && mc->soc->ops->handle_irq) {
+-		mc->irq = platform_get_irq(pdev, 0);
+-		if (mc->irq < 0)
+-			return mc->irq;
+-
+ 		WARN(!mc->soc->client_id_mask, "missing client ID mask for this SoC\n");
+ 
++		for (int i = 0; i < mc->soc->ops->num_interrupts; i++) {
++			int irq;
++
++			irq = platform_get_irq(pdev, i);
++			if (irq < 0)
++				return irq;
++
++			err = devm_request_irq(&pdev->dev, irq, mc->soc->ops->handle_irq[i], 0,
++						dev_name(&pdev->dev), mc);
++			if (err < 0) {
++				dev_err(&pdev->dev, "failed to request IRQ#%u: %d\n", irq,
++					err);
++				return err;
++			}
++		}
++	}
++
++	if (mc->soc->has_chiplet_arch) {
++		unsigned long intstat;
++
++		/* Unmask MCF interrupts */
++		mc_ch_writel(mc, MC_BROADCAST_CHANNEL, mc->soc->mcf_intmask, MCF_INTMASK_0);
++		mc_ch_writel(mc, MC_BROADCAST_CHANNEL, mc->soc->mcf_intmask, MCF_INTPRIORITY_0);
++
++		/* Unmask HUB and HUBC interrupts */
++		mc_ch_writel(mc, MC_BROADCAST_CHANNEL, mc->soc->hub_intmask, MSS_HUB_INTRMASK_0);
++		mc_ch_writel(mc, MC_BROADCAST_CHANNEL, mc->soc->hub_intmask,
++						MSS_HUB_INTRPRIORITY_0);
++		mc_ch_writel(mc, MC_BROADCAST_CHANNEL, mc->soc->hubc_intmask,
++						MSS_HUB_HUBC_INTMASK_0);
++		mc_ch_writel(mc, MC_BROADCAST_CHANNEL, mc->soc->hubc_intmask,
++						MSS_HUB_HUBC_INTPRIORITY_0);
++
++		/* Unmask SBS interrupts */
++		mc_ch_writel(mc, MC_BROADCAST_CHANNEL, mc->soc->sbs_intmask, MSS_SBS_INTMASK_0);
++
++		/* Unmask MC channel interrupt */
++		mc_ch_writel(mc, MC_BROADCAST_CHANNEL, mc->soc->mc_ch_intmask, MC_CH_INTMASK_0);
++	} else {
+ 		if (mc->soc->num_channels)
+ 			mc_ch_writel(mc, MC_BROADCAST_CHANNEL, mc->soc->intmask,
+-				     MC_INTMASK);
++					MC_INTMASK);
+ 		else
+ 			mc_writel(mc, mc->soc->intmask, MC_INTMASK);
+-
+-		err = devm_request_irq(&pdev->dev, mc->irq, mc->soc->ops->handle_irq, 0,
+-				       dev_name(&pdev->dev), mc);
+-		if (err < 0) {
+-			dev_err(&pdev->dev, "failed to request IRQ#%u: %d\n", mc->irq,
+-				err);
+-			return err;
+-		}
+ 	}
+ 
+ 	if (mc->soc->reset_ops) {
+diff --git a/drivers/memory/tegra/mc.h b/drivers/memory/tegra/mc.h
+index 2519bb4248fd..35e396858f65 100644
+--- a/drivers/memory/tegra/mc.h
++++ b/drivers/memory/tegra/mc.h
+@@ -13,15 +13,23 @@
+ #include <soc/tegra/mc.h>
+ 
+ #define MC_INTSTATUS					0x00
++#define MC_INT_INVALID_GART_PAGE			BIT(7)
++#define MC_INT_INVALID_SMMU_PAGE			BIT(10)
++#define MC_INT_INVALID_APB_ASID_UPDATE			BIT(11)
++#define MC_ERR_ROUTE_SANITY_SEC				BIT(13)
++
+ #define MC_INTMASK					0x04
+-#define MC_ERR_STATUS					0x08
+-#define MC_ERR_ADR					0x0c
+ #define MC_GART_ERROR_REQ				0x30
+ #define MC_EMEM_ADR_CFG					0x54
++#define MC_EMEM_ADR_CFG_EMEM_NUMDEV			BIT(0)
++
+ #define MC_DECERR_EMEM_OTHERS_STATUS			0x58
+ #define MC_SECURITY_VIOLATION_STATUS			0x74
+ #define MC_EMEM_ARB_CFG					0x90
+ #define MC_EMEM_ARB_OUTSTANDING_REQ			0x94
++#define MC_EMEM_ARB_OUTSTANDING_REQ_HOLDOFF_OVERRIDE	BIT(30)
++#define MC_EMEM_ARB_OUTSTANDING_REQ_LIMIT_ENABLE	BIT(31)
++
+ #define MC_EMEM_ARB_TIMING_RCD				0x98
+ #define MC_EMEM_ARB_TIMING_RP				0x9c
+ #define MC_EMEM_ARB_TIMING_RC				0xa0
+@@ -43,57 +51,103 @@
+ #define MC_EMEM_ARB_OVERRIDE				0xe8
+ #define MC_TIMING_CONTROL_DBG				0xf8
+ #define MC_TIMING_CONTROL				0xfc
+-#define MC_ERR_VPR_STATUS				0x654
+-#define MC_ERR_VPR_ADR					0x658
+-#define MC_ERR_SEC_STATUS				0x67c
+-#define MC_ERR_SEC_ADR					0x680
+-#define MC_ERR_MTS_STATUS				0x9b0
+-#define MC_ERR_MTS_ADR					0x9b4
+-#define MC_ERR_ROUTE_SANITY_STATUS			0x9c0
+-#define MC_ERR_ROUTE_SANITY_ADR				0x9c4
+-#define MC_ERR_GENERALIZED_CARVEOUT_STATUS		0xc00
+-#define MC_ERR_GENERALIZED_CARVEOUT_ADR			0xc04
++#define MC_TIMING_UPDATE				BIT(0)
++
+ #define MC_EMEM_ADR_CFG_CHANNEL_ENABLE			0xdf8
+-#define T264_MC_EMEM_ADR_CFG_CHANNEL_ENABLE		0x8870
+ #define MC_GLOBAL_INTSTATUS				0xf24
+-#define MC_ERR_ADR_HI					0x11fc
+ 
+-#define MC_INT_DECERR_ROUTE_SANITY			BIT(20)
+-#define MC_INT_DECERR_GENERALIZED_CARVEOUT		BIT(17)
+-#define MC_INT_DECERR_MTS				BIT(16)
+-#define MC_INT_SECERR_SEC				BIT(13)
+-#define MC_INT_DECERR_VPR				BIT(12)
+-#define MC_INT_INVALID_APB_ASID_UPDATE			BIT(11)
+-#define MC_INT_INVALID_SMMU_PAGE			BIT(10)
+-#define MC_INT_ARBITRATION_EMEM				BIT(9)
+-#define MC_INT_SECURITY_VIOLATION			BIT(8)
+-#define MC_INT_INVALID_GART_PAGE			BIT(7)
++/* Registers for MSS HUB */
++#define MSS_HUB_GLOBAL_INTSTATUS_0			0x6000
++#define MSS_HUBC_INTR					BIT(0)
++
++#define MSS_HUB_HUBC_INTSTATUS_0			0x6008
++#define MSS_HUB_INTRSTATUS_0				0x600c
++#define MSS_HUB_HUBC_INTMASK_0				0x6010
++#define MSS_HUB_HUBC_SCRUB_DONE_INTMASK			BIT(0)
++
++#define MSS_HUB_HUBC_INTPRIORITY_0			0x6014
++#define MSS_HUB_INTRMASK_0				0x6018
++#define MSS_HUB_COALESCER_ERR_INTMASK			BIT(0)
++#define MSS_HUB_SMMU_BYPASS_ALLOW_ERR_INTMASK		BIT(1)
++#define MSS_HUB_ILLEGAL_TBUGRP_ID_INTMASK		BIT(2)
++#define MSS_HUB_MSI_ERR_INTMASK				BIT(3)
++#define MSS_HUB_POISON_RSP_INTMASK			BIT(4)
++#define MSS_HUB_RESTRICTED_ACCESS_ERR_INTMASK		BIT(5)
++#define MSS_HUB_RESERVED_PA_ERR_INTMASK			BIT(6)
++
++#define MSS_HUB_INTRPRIORITY_0				0x601c
++#define MSS_HUB_SMMU_BYPASS_ALLOW_ERR_STATUS_0		0x6020
++#define MSS_HUB_MSI_ERR_STATUS_0			0x6024
++#define MSS_HUB_POISON_RSP_STATUS_0			0x6028
++#define MSS_HUB_COALESCE_ERR_STATUS_0			0x60e0
++#define MSS_HUB_COALESCE_ERR_ADR_HI_0			0x60e4
++#define MSS_HUB_COALESCE_ERR_ADR_0			0x60e8
++#define MSS_HUB_RESTRICTED_ACCESS_ERR_STATUS_0		0x638c
++#define MSS_HUB_RESERVED_PA_ERR_STATUS_0		0x6390
++#define MSS_HUB_ILLEGAL_TBUGRP_ID_ERR_STATUS_0		0x63b0
++
++/* Registers for MC Channel */
++#define MC_CH_INTSTATUS_0				0x82d4
++#define MC_CH_INTMASK_0					0x82d8
++#define WCAM_ERR_INTMASK				BIT(19)
++
++#define T264_MC_EMEM_ADR_CFG_CHANNEL_ENABLE		0x8870
++#define MC_ERR_GENERALIZED_CARVEOUT_STATUS_1_0		0xbc74
++
++/* Registers for MCF */
++#define MCF_COMMON_INTSTATUS0_0_0			0xce04
++#define MCF_INTSTATUS_0					0xce2c
+ #define MC_INT_DECERR_EMEM				BIT(6)
++#define MC_INT_SECURITY_VIOLATION			BIT(8)
++#define MC_INT_DECERR_VPR				BIT(12)
++#define MC_INT_SECERR_SEC				BIT(13)
++#define MC_INT_DECERR_MTS				BIT(16)
++#define MC_INT_DECERR_GENERALIZED_CARVEOUT		BIT(17)
++#define MC_INT_DECERR_ROUTE_SANITY			BIT(20)
++#define MC_INT_DECERR_ROUTE_SANITY_GIC_MSI		BIT(21)
++
++#define MCF_INTMASK_0					0xce30
++#define MCF_INTPRIORITY_0				0xce34
++
++/* Registers for SBS */
++#define MSS_SBS_INTSTATUS_0				0xec08
++#define MSS_SBS_INTMASK_0				0xec0c
++#define MSS_SBS_FILL_FIFO_ISO_OVERFLOW_INTMASK		BIT(0)
++#define MSS_SBS_FILL_FIFO_SISO_OVERFLOW_INTMASK		BIT(1)
++#define MSS_SBS_FILL_FIFO_NISO_OVERFLOW_INTMASK		BIT(2)
++
++/*Bit field of MC_ERR_ROUTE_SANITY_STATUS_0 register */
++#define MC_ERR_ROUTE_SANITY_RW				BIT(12)
++
++/*Bit field of MC_ERR_STATUS_0 register */
++#define MC_ERR_STATUS_RW				BIT(16)
++#define MC_ERR_STATUS_SECURITY				BIT(17)
++#define MC_ERR_STATUS_NONSECURE				BIT(25)
++#define MC_ERR_STATUS_WRITABLE				BIT(26)
++#define MC_ERR_STATUS_READABLE				BIT(27)
++
++#define MC_ERR_STATUS_ADR_HI_MASK_GSC			0xffff
++#define MC_ERR_STATUS_ADR_HI_SHIFT_GSC			16
++#define MC_ERR_STATUS_ADR_HI_SHIFT_RT			15
+ 
+ #define MC_ERR_STATUS_TYPE_SHIFT			28
+ #define MC_ERR_STATUS_TYPE_INVALID_SMMU_PAGE		(0x6 << 28)
+-#define MC_ERR_STATUS_TYPE_MASK				(0x7 << 28)
+-#define MC_ERR_STATUS_READABLE				BIT(27)
+-#define MC_ERR_STATUS_WRITABLE				BIT(26)
+-#define MC_ERR_STATUS_NONSECURE				BIT(25)
++#define MC_ERR_STATUS_TYPE_MASK_RT			(0xf << 28)
++#define MC_ERR_STATUS_TYPE_SHIFT_RT			28
+ #define MC_ERR_STATUS_ADR_HI_SHIFT			20
+-#define MC_ERR_STATUS_ADR_HI_MASK			0x3
+-#define MC_ERR_STATUS_SECURITY				BIT(17)
+-#define MC_ERR_STATUS_RW				BIT(16)
+ 
+-#define MC_EMEM_ADR_CFG_EMEM_NUMDEV			BIT(0)
++#define ERR_GENERALIZED_APERTURE_ID_SHIFT		0
++#define ERR_GENERALIZED_APERTURE_ID_MASK		0x1F
++#define ERR_GENERALIZED_CARVEOUT_APERTURE_ID_SHIFT	5
++#define ERR_GENERALIZED_CARVEOUT_APERTURE_ID_MASK	0x1F
+ 
+ #define MC_EMEM_ARB_CFG_CYCLES_PER_UPDATE(x)		((x) & 0x1ff)
+ #define MC_EMEM_ARB_CFG_CYCLES_PER_UPDATE_MASK		0x1ff
+ 
+ #define MC_EMEM_ARB_OUTSTANDING_REQ_MAX_MASK		0x1ff
+-#define MC_EMEM_ARB_OUTSTANDING_REQ_HOLDOFF_OVERRIDE	BIT(30)
+-#define MC_EMEM_ARB_OUTSTANDING_REQ_LIMIT_ENABLE	BIT(31)
+ 
+ #define MC_EMEM_ARB_OVERRIDE_EACK_MASK			0x3
+ 
+-#define MC_TIMING_UPDATE				BIT(0)
+-
+ #define MC_BROADCAST_CHANNEL				~0
+ 
+ static inline u32 tegra_mc_scale_percents(u64 val, unsigned int percents)
+@@ -207,8 +261,12 @@ extern const struct tegra_mc_ops tegra264_mc_ops;
+ #endif
+ 
+ irqreturn_t tegra30_mc_handle_irq(int irq, void *data);
+-extern const char * const tegra_mc_status_names[32];
+-extern const char * const tegra_mc_error_names[8];
++extern const char * const tegra20_mc_status_names[32];
++extern const char * const tegra20_mc_error_names[8];
++int tegra186_mc_probe(struct tegra_mc *mc);
++int tegra186_mc_probe_device(struct tegra_mc *mc, struct device *dev);
++int tegra186_mc_resume(struct tegra_mc *mc);
++void tegra186_mc_remove(struct tegra_mc *mc);
+ 
+ /*
+  * These IDs are for internal use of Tegra ICC drivers. The ID numbers are
+diff --git a/drivers/memory/tegra/tegra114.c b/drivers/memory/tegra/tegra114.c
+index 41350570c815..584dba5590a5 100644
+--- a/drivers/memory/tegra/tegra114.c
++++ b/drivers/memory/tegra/tegra114.c
+@@ -1114,4 +1114,6 @@ const struct tegra_mc_soc tegra114_mc_soc = {
+ 	.resets = tegra114_mc_resets,
+ 	.num_resets = ARRAY_SIZE(tegra114_mc_resets),
+ 	.ops = &tegra30_mc_ops,
++	.has_chiplet_arch = false,
++	.mc_regs = &tegra20_mc_regs,
+ };
+diff --git a/drivers/memory/tegra/tegra124.c b/drivers/memory/tegra/tegra124.c
+index 9d7393e19f12..13fea2095035 100644
+--- a/drivers/memory/tegra/tegra124.c
++++ b/drivers/memory/tegra/tegra124.c
+@@ -1275,6 +1275,8 @@ const struct tegra_mc_soc tegra124_mc_soc = {
+ 	.num_resets = ARRAY_SIZE(tegra124_mc_resets),
+ 	.icc_ops = &tegra124_mc_icc_ops,
+ 	.ops = &tegra30_mc_ops,
++	.has_chiplet_arch = false,
++	.mc_regs = &tegra20_mc_regs,
+ };
+ #endif /* CONFIG_ARCH_TEGRA_124_SOC */
+ 
+@@ -1307,5 +1309,7 @@ const struct tegra_mc_soc tegra132_mc_soc = {
+ 	.num_resets = ARRAY_SIZE(tegra124_mc_resets),
+ 	.icc_ops = &tegra124_mc_icc_ops,
+ 	.ops = &tegra30_mc_ops,
++	.has_chiplet_arch = false,
++	.mc_regs = &tegra20_mc_regs,
+ };
+ #endif /* CONFIG_ARCH_TEGRA_132_SOC */
+diff --git a/drivers/memory/tegra/tegra186.c b/drivers/memory/tegra/tegra186.c
+index 2661bca48a06..26fa0dabcd51 100644
+--- a/drivers/memory/tegra/tegra186.c
++++ b/drivers/memory/tegra/tegra186.c
+@@ -23,7 +23,7 @@
+ #define MC_SID_STREAMID_SECURITY_WRITE_ACCESS_DISABLED BIT(16)
+ #define MC_SID_STREAMID_SECURITY_OVERRIDE BIT(8)
+ 
+-static int tegra186_mc_probe(struct tegra_mc *mc)
++int tegra186_mc_probe(struct tegra_mc *mc)
+ {
+ 	struct platform_device *pdev = to_platform_device(mc->dev);
+ 	struct resource *res;
+@@ -76,7 +76,7 @@ static int tegra186_mc_probe(struct tegra_mc *mc)
+ 	return 0;
+ }
+ 
+-static void tegra186_mc_remove(struct tegra_mc *mc)
++void tegra186_mc_remove(struct tegra_mc *mc)
+ {
+ 	of_platform_depopulate(mc->dev);
+ }
+@@ -124,7 +124,7 @@ static void tegra186_mc_client_sid_override(struct tegra_mc *mc,
+ }
+ #endif
+ 
+-static int tegra186_mc_probe_device(struct tegra_mc *mc, struct device *dev)
++int tegra186_mc_probe_device(struct tegra_mc *mc, struct device *dev)
+ {
+ #if IS_ENABLED(CONFIG_IOMMU_API)
+ 	struct of_phandle_args args;
+@@ -154,7 +154,7 @@ static int tegra186_mc_probe_device(struct tegra_mc *mc, struct device *dev)
+ 	return 0;
+ }
+ 
+-static int tegra186_mc_resume(struct tegra_mc *mc)
++int tegra186_mc_resume(struct tegra_mc *mc)
+ {
+ #if IS_ENABLED(CONFIG_IOMMU_API)
+ 	unsigned int i;
+@@ -169,19 +169,15 @@ static int tegra186_mc_resume(struct tegra_mc *mc)
+ 	return 0;
+ }
+ 
+-const struct tegra_mc_ops tegra186_mc_ops = {
+-	.probe = tegra186_mc_probe,
+-	.remove = tegra186_mc_remove,
+-	.resume = tegra186_mc_resume,
+-	.probe_device = tegra186_mc_probe_device,
+-	.handle_irq = tegra30_mc_handle_irq,
+-};
++static irq_handler_t tegra186_mc_irq_handlers = tegra30_mc_handle_irq;
+ 
+-const struct tegra_mc_ops tegra264_mc_ops = {
++const struct tegra_mc_ops tegra186_mc_ops = {
+ 	.probe = tegra186_mc_probe,
+ 	.remove = tegra186_mc_remove,
+ 	.probe_device = tegra186_mc_probe_device,
++	.handle_irq = &tegra186_mc_irq_handlers,
+ 	.resume = tegra186_mc_resume,
++	.num_interrupts = 1,
+ };
+ 
+ #if defined(CONFIG_ARCH_TEGRA_186_SOC)
+@@ -922,5 +918,7 @@ const struct tegra_mc_soc tegra186_mc_soc = {
+ 	.ops = &tegra186_mc_ops,
+ 	.ch_intmask = 0x0000000f,
+ 	.global_intstatus_channel_shift = 0,
++	.has_chiplet_arch = false,
++	.mc_regs = &tegra20_mc_regs,
+ };
+ #endif
+diff --git a/drivers/memory/tegra/tegra194.c b/drivers/memory/tegra/tegra194.c
+index a98bc042e8ac..0bbc77115ce5 100644
+--- a/drivers/memory/tegra/tegra194.c
++++ b/drivers/memory/tegra/tegra194.c
+@@ -1359,4 +1359,6 @@ const struct tegra_mc_soc tegra194_mc_soc = {
+ 	.icc_ops = &tegra_mc_icc_ops,
+ 	.ch_intmask = 0x00000f00,
+ 	.global_intstatus_channel_shift = 8,
++	.has_chiplet_arch = false,
++	.mc_regs = &tegra20_mc_regs,
+ };
+diff --git a/drivers/memory/tegra/tegra20.c b/drivers/memory/tegra/tegra20.c
+index a3022e715dee..0fcd7ce4aa5a 100644
+--- a/drivers/memory/tegra/tegra20.c
++++ b/drivers/memory/tegra/tegra20.c
+@@ -700,7 +700,7 @@ static irqreturn_t tegra20_mc_handle_irq(int irq, void *data)
+ 		return IRQ_NONE;
+ 
+ 	for_each_set_bit(bit, &status, 32) {
+-		const char *error = tegra_mc_status_names[bit];
++		const char *error = tegra20_mc_status_names[bit];
+ 		const char *direction = "read", *secure = "";
+ 		const char *client, *desc;
+ 		phys_addr_t addr;
+@@ -713,7 +713,7 @@ static irqreturn_t tegra20_mc_handle_irq(int irq, void *data)
+ 			value = mc_readl(mc, reg);
+ 
+ 			id = value & mc->soc->client_id_mask;
+-			desc = tegra_mc_error_names[2];
++			desc = tegra20_mc_error_names[2];
+ 
+ 			if (value & BIT(31))
+ 				direction = "write";
+@@ -724,7 +724,7 @@ static irqreturn_t tegra20_mc_handle_irq(int irq, void *data)
+ 			value = mc_readl(mc, reg);
+ 
+ 			id = (value >> 1) & mc->soc->client_id_mask;
+-			desc = tegra_mc_error_names[2];
++			desc = tegra20_mc_error_names[2];
+ 
+ 			if (value & BIT(0))
+ 				direction = "write";
+@@ -736,7 +736,7 @@ static irqreturn_t tegra20_mc_handle_irq(int irq, void *data)
+ 
+ 			id = value & mc->soc->client_id_mask;
+ 			type = (value & BIT(30)) ? 4 : 3;
+-			desc = tegra_mc_error_names[type];
++			desc = tegra20_mc_error_names[type];
+ 			secure = "secure ";
+ 
+ 			if (value & BIT(31))
+@@ -764,6 +764,7 @@ static irqreturn_t tegra20_mc_handle_irq(int irq, void *data)
+ static const struct tegra_mc_ops tegra20_mc_ops = {
+ 	.probe = tegra20_mc_probe,
+ 	.handle_irq = tegra20_mc_handle_irq,
++	.num_interrupts = 1,
+ };
+ 
+ const struct tegra_mc_soc tegra20_mc_soc = {
+@@ -778,4 +779,6 @@ const struct tegra_mc_soc tegra20_mc_soc = {
+ 	.num_resets = ARRAY_SIZE(tegra20_mc_resets),
+ 	.icc_ops = &tegra20_mc_icc_ops,
+ 	.ops = &tegra20_mc_ops,
++	.has_chiplet_arch = false,
++	.mc_regs = &tegra20_mc_regs,
+ };
+diff --git a/drivers/memory/tegra/tegra210.c b/drivers/memory/tegra/tegra210.c
+index 3c2949c16fde..0e7c0b5665d8 100644
+--- a/drivers/memory/tegra/tegra210.c
++++ b/drivers/memory/tegra/tegra210.c
+@@ -1287,4 +1287,6 @@ const struct tegra_mc_soc tegra210_mc_soc = {
+ 	.resets = tegra210_mc_resets,
+ 	.num_resets = ARRAY_SIZE(tegra210_mc_resets),
+ 	.ops = &tegra30_mc_ops,
++	.has_chiplet_arch = false,
++	.mc_regs = &tegra20_mc_regs,
+ };
+diff --git a/drivers/memory/tegra/tegra234.c b/drivers/memory/tegra/tegra234.c
+index 2593993ea7e0..df08e522a55a 100644
+--- a/drivers/memory/tegra/tegra234.c
++++ b/drivers/memory/tegra/tegra234.c
+@@ -1153,4 +1153,6 @@ const struct tegra_mc_soc tegra234_mc_soc = {
+ 	 * supported.
+ 	 */
+ 	.num_carveouts = 32,
++	.has_chiplet_arch = false,
++	.mc_regs = &tegra20_mc_regs,
+ };
+diff --git a/drivers/memory/tegra/tegra264.c b/drivers/memory/tegra/tegra264.c
+index f8d1a4b32b81..2c77d145c0a9 100644
+--- a/drivers/memory/tegra/tegra264.c
++++ b/drivers/memory/tegra/tegra264.c
+@@ -21,45 +21,62 @@
+  */
+ static const struct tegra_mc_client tegra264_mc_clients[] = {
+ 	{
+-		.id = TEGRA264_MEMORY_CLIENT_HDAR,
+-		.name = "hdar",
+-		.bpmp_id = TEGRA264_BWMGR_HDA,
+-		.type = TEGRA_ICC_ISO_AUDIO,
++		.id = TEGRA264_MEMORY_CLIENT_PTCR,
++		.name = "ptcr",
+ 	}, {
+-		.id = TEGRA264_MEMORY_CLIENT_HDAW,
+-		.name = "hdaw",
+-		.bpmp_id = TEGRA264_BWMGR_HDA,
+-		.type = TEGRA_ICC_ISO_AUDIO,
++		.id = TEGRA264_MEMORY_CLIENT_HOST1XR,
++		.name = "host1xr",
+ 	}, {
+-		.id = TEGRA264_MEMORY_CLIENT_MGBE0R,
+-		.name = "mgbe0r",
+-		.bpmp_id = TEGRA264_BWMGR_EQOS,
+-		.type = TEGRA_ICC_NISO,
++		.id = TEGRA264_MEMORY_CLIENT_MPCORER,
++		.name = "mpcorer",
+ 	}, {
+-		.id = TEGRA264_MEMORY_CLIENT_MGBE0W,
+-		.name = "mgbe0w",
+-		.bpmp_id = TEGRA264_BWMGR_EQOS,
+-		.type = TEGRA_ICC_NISO,
++		.id = TEGRA264_MEMORY_CLIENT_PSCR,
++		.name = "pscr",
+ 	}, {
+-		.id = TEGRA264_MEMORY_CLIENT_MGBE1R,
+-		.name = "mgbe1r",
+-		.bpmp_id = TEGRA264_BWMGR_EQOS,
+-		.type = TEGRA_ICC_NISO,
++		.id = TEGRA264_MEMORY_CLIENT_PSCW,
++		.name = "pscw",
+ 	}, {
+-		.id = TEGRA264_MEMORY_CLIENT_MGBE1W,
+-		.name = "mgbe1w",
+-		.bpmp_id = TEGRA264_BWMGR_EQOS,
+-		.type = TEGRA_ICC_NISO,
++		.id = TEGRA264_MEMORY_CLIENT_ISP0R,
++		.name = "isp0r",
+ 	}, {
+-		.id = TEGRA264_MEMORY_CLIENT_SDMMC0R,
+-		.name = "sdmmc0r",
+-		.bpmp_id = TEGRA264_BWMGR_SDMMC_1,
+-		.type = TEGRA_ICC_NISO,
++		.id = TEGRA264_MEMORY_CLIENT_MPCOREW,
++		.name = "mpcorew",
+ 	}, {
+-		.id = TEGRA264_MEMORY_CLIENT_SDMMC0W,
+-		.name = "sdmmc0w",
+-		.bpmp_id = TEGRA264_BWMGR_SDMMC_1,
+-		.type = TEGRA_ICC_NISO,
++		.id = TEGRA264_MEMORY_CLIENT_ISP0W,
++		.name = "isp0w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_ISP1W,
++		.name = "isp1w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_ISPFALCONR,
++		.name = "ispfalconr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_ISPFALCONW,
++		.name = "ispfalconw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MGBE2R,
++		.name = "mgbe2r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_OFAR2MC,
++		.name = "ofar2mc",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_OFAW2MC,
++		.name = "ofaw2mc",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MGBE2W,
++		.name = "mgbe2w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MGBE3R,
++		.name = "mgbe3r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MGBE3W,
++		.name = "mgbe3w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SEU1RD,
++		.name = "seu1rd",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SEU1WR,
++		.name = "seu1wr",
+ 	}, {
+ 		.id = TEGRA264_MEMORY_CLIENT_VICR,
+ 		.name = "vicr",
+@@ -70,6 +87,15 @@ static const struct tegra_mc_client tegra264_mc_clients[] = {
+ 		.name = "vicw",
+ 		.bpmp_id = TEGRA264_BWMGR_VIC,
+ 		.type = TEGRA_ICC_NISO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_VIW,
++		.name = "viw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XSPI0R,
++		.name = "xspi0r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XSPI0W,
++		.name = "xspi0w",
+ 	}, {
+ 		.id = TEGRA264_MEMORY_CLIENT_APER,
+ 		.name = "aper",
+@@ -80,12 +106,48 @@ static const struct tegra_mc_client tegra264_mc_clients[] = {
+ 		.name = "apew",
+ 		.bpmp_id = TEGRA264_BWMGR_APE,
+ 		.type = TEGRA_ICC_ISO_AUDIO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SER,
++		.name = "ser",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SEW,
++		.name = "sew",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_AXIAPR,
++		.name = "axiapr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_AXIAPW,
++		.name = "axiapw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_ETRR,
++		.name = "etrr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_ETRW,
++		.name = "etrw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_TSECR,
++		.name = "tsecr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_TSECW,
++		.name = "tsecw",
+ 	}, {
+ 		.id = TEGRA264_MEMORY_CLIENT_BPMPR,
+ 		.name = "bpmpr",
+ 	}, {
+ 		.id = TEGRA264_MEMORY_CLIENT_BPMPW,
+ 		.name = "bpmpw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_AONR,
++		.name = "aonr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_AONW,
++		.name = "aonw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_GPCDMAR,
++		.name = "gpcdmar",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_GPCDMAW,
++		.name = "gpcdmaw",
+ 	}, {
+ 		.id = TEGRA264_MEMORY_CLIENT_APEDMAR,
+ 		.name = "apedmar",
+@@ -96,6 +158,36 @@ static const struct tegra_mc_client tegra264_mc_clients[] = {
+ 		.name = "apedmaw",
+ 		.bpmp_id = TEGRA264_BWMGR_APEDMA,
+ 		.type = TEGRA_ICC_ISO_AUDIO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU0R,
++		.name = "miu0r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU0W,
++		.name = "miu0w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU1R,
++		.name = "miu1r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU1W,
++		.name = "miu1w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU2R,
++		.name = "miu2r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU2W,
++		.name = "miu2w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU3R,
++		.name = "miu3r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU3W,
++		.name = "miu3w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU4R,
++		.name = "miu4r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU4W,
++		.name = "miu4w",
+ 	}, {
+ 		.id = TEGRA264_MEMORY_CLIENT_VIFALCONR,
+ 		.name = "vifalconr",
+@@ -116,6 +208,12 @@ static const struct tegra_mc_client tegra264_mc_clients[] = {
+ 		.name = "rcew",
+ 		.bpmp_id = TEGRA264_BWMGR_RCE,
+ 		.type = TEGRA_ICC_NISO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_NVENC1SRD2MC,
++		.name = "nvenc1srd2mc",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_NVENC1SWR2MC,
++		.name = "nvenc1swr2mc",
+ 	}, {
+ 		.id = TEGRA264_MEMORY_CLIENT_PCIE0W,
+ 		.name = "pcie0w",
+@@ -191,9 +289,441 @@ static const struct tegra_mc_client tegra264_mc_clients[] = {
+ 		.name = "nvdecswr2mc",
+ 		.bpmp_id = TEGRA264_BWMGR_NVDEC,
+ 		.type = TEGRA_ICC_NISO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU5R,
++		.name = "miu5r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU5W,
++		.name = "miu5w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU6W,
++		.name = "miu6w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_RISTR,
++		.name = "ristr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_RISTW,
++		.name = "ristw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_OESPR,
++		.name = "oespr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_OESPW,
++		.name = "oespw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU7W,
++		.name = "miu7w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU8R,
++		.name = "miu8r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU8W,
++		.name = "miu8w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU9R,
++		.name = "miu9r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MIU9W,
++		.name = "miu9w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_PMA0AWR,
++		.name = "pma0awr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_NVJPG1SRD2MC,
++		.name = "nvjpg1srd2mc",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_NVJPG1SWR2MC,
++		.name = "nvjpg1swr2mc",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU0CTWR,
++		.name = "smmu0ctwr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU0CMDQVR,
++		.name = "smmu0cmdqvr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU0CMDQVW,
++		.name = "smmu0cmdqvw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU0EVNTQW,
++		.name = "smmu0evntqw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU1PTWR,
++		.name = "smmu1ptwr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU1CTWR,
++		.name = "smmu1ctwr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU1CMDQVR,
++		.name = "smmu1cmdqvr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU1CMDQVW,
++		.name = "smmu1cmdqvw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU1EVNTQW,
++		.name = "smmu1evntqw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU2PTWR,
++		.name = "smmu2ptwr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU2CTWR,
++		.name = "smmu2ctwr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU2CMDQVR,
++		.name = "smmu2cmdqvr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU2CMDQVW,
++		.name = "smmu2cmdqvw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU2EVNTQW,
++		.name = "smmu2evntqw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU0CMDQR,
++		.name = "smmu0cmdqr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU1CMDQR,
++		.name = "smmu1cmdqr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU2CMDQR,
++		.name = "smmu2cmdqr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_APE1R,
++		.name = "ape1r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_APE1W,
++		.name = "ape1w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_UFSR,
++		.name = "ufsr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_UFSW,
++		.name = "ufsw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XUSB_DEVR,
++		.name = "xusb_devr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XUSB_DEVW,
++		.name = "xusb_devw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XUSB_DEV1R,
++		.name = "xusb_dev1r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XUSB_DEV2W,
++		.name = "xusb_dev2w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XUSB_DEV3R,
++		.name = "xusb_dev3r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XUSB_DEV3W,
++		.name = "xusb_dev3w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XUSB_DEV4R,
++		.name = "xusb_dev4r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XUSB_DEV4W,
++		.name = "xusb_dev4w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XUSB_DEV5R,
++		.name = "xusb_dev5r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XUSB_DEV5W,
++		.name = "xusb_dev5w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_DCER,
++		.name = "dcer",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_DCEW,
++		.name = "dcew",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HDAR,
++		.name = "hdar",
++		.bpmp_id = TEGRA264_BWMGR_HDA,
++		.type = TEGRA_ICC_ISO_AUDIO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HDAW,
++		.name = "hdaw",
++		.bpmp_id = TEGRA264_BWMGR_HDA,
++		.type = TEGRA_ICC_ISO_AUDIO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_DISPNISOR,
++		.name = "dispnisor",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_DISPNISOW,
++		.name = "dispnisow",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XUSB_DEV1W,
++		.name = "xusb_dev1w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_XUSB_DEV2R,
++		.name = "xusb_dev2r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_DISPR,
++		.name = "dispr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MSSSEQR,
++		.name = "mssseqr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MSSSEQW,
++		.name = "mssseqw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU3PTWR,
++		.name = "smmu3ptwr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU3CTWR,
++		.name = "smmu3ctwr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU3CMDQVR,
++		.name = "smmu3cmdqvr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU3CMDQVW,
++		.name = "smmu3cmdqvw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU3EVNTQW,
++		.name = "smmu3evntqw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU3CMDQR,
++		.name = "smmu3cmdqr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU4PTWR,
++		.name = "smmu4ptwr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU4CTWR,
++		.name = "smmu4ctwr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU4CMDQVR,
++		.name = "smmu4cmdqvr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU4CMDQVW,
++		.name = "smmu4cmdqvw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU4EVNTQW,
++		.name = "smmu4evntqw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SMMU4CMDQR,
++		.name = "smmu4cmdqr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MGBE0R,
++		.name = "mgbe0r",
++		.bpmp_id = TEGRA264_BWMGR_EQOS,
++		.type = TEGRA_ICC_NISO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MGBE0W,
++		.name = "mgbe0w",
++		.bpmp_id = TEGRA264_BWMGR_EQOS,
++		.type = TEGRA_ICC_NISO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MGBE1R,
++		.name = "mgbe1r",
++		.bpmp_id = TEGRA264_BWMGR_EQOS,
++		.type = TEGRA_ICC_NISO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_MGBE1W,
++		.name = "mgbe1w",
++		.bpmp_id = TEGRA264_BWMGR_EQOS,
++		.type = TEGRA_ICC_NISO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_VI1W,
++		.name = "vi1w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_VIFALCON1R,
++		.name = "vifalcon1r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_VIFALCON1W,
++		.name = "vifalcon1w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_ISPFALCON1R,
++		.name = "ispfalcon1r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_ISPFALCON1W,
++		.name = "ispfalcon1w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_RCE1R,
++		.name = "rce1r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_RCE1W,
++		.name = "rce1w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SEU2R,
++		.name = "seu2r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SEU2W,
++		.name = "seu2w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SEU3R,
++		.name = "seu3r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SEU3W,
++		.name = "seu3w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_PVA0R,
++		.name = "pva0r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_PVA0W,
++		.name = "pva0w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_PVA1R,
++		.name = "pva1r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_PVA1W,
++		.name = "pva1w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_PVA2R,
++		.name = "pva2r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_PVA2W,
++		.name = "pva2w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_ISP3W,
++		.name = "isp3w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_ISP2R,
++		.name = "isp2r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_ISP2W,
++		.name = "isp2w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_EQOSR,
++		.name = "eqosr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_EQOSW,
++		.name = "eqosw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_FSI0R,
++		.name = "fsi0r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_FSI0W,
++		.name = "fsi0w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_FSI1R,
++		.name = "fsi1r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_FSI1W,
++		.name = "fsi1w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SDMMC0R,
++		.name = "sdmmc0r",
++		.bpmp_id = TEGRA264_BWMGR_SDMMC_1,
++		.type = TEGRA_ICC_NISO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SDMMC0W,
++		.name = "sdmmc0w",
++		.bpmp_id = TEGRA264_BWMGR_SDMMC_1,
++		.type = TEGRA_ICC_NISO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SBR,
++		.name = "sbr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SBW,
++		.name = "sbw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU0R,
++		.name = "hss_miu0r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU0W,
++		.name = "hss_miu0w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU1R,
++		.name = "hss_miu1r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU1W,
++		.name = "hss_miu1w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU2R,
++		.name = "hss_miu2r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU2W,
++		.name = "hss_miu2w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU3R,
++		.name = "hss_miu3r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU3W,
++		.name = "hss_miu3w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU4R,
++		.name = "hss_miu4r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU4W,
++		.name = "hss_miu4w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU5R,
++		.name = "hss_miu5r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU5W,
++		.name = "hss_miu5w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU6R,
++		.name = "hss_miu6r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU6W,
++		.name = "hss_miu6w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU7R,
++		.name = "hss_miu7r",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_HSS_MIU7W,
++		.name = "hss_miu7w",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_GMMUR2MC,
++		.name = "gmmur2mc",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_UCFELAR,
++		.name = "ucfelar",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_UCFELAW,
++		.name = "ucfelaw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SLCR,
++		.name = "slcr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_SLCW,
++		.name = "slcw",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_REMOTER,
++		.name = "remoter",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_REMOTEW,
++		.name = "remotew"
+ 	},
+ };
+ 
++static const char *const tegra264_mc_status_names[32] = {
++	[6] = "EMEM address decode error",
++	[8] = "Security violation",
++	[12] = "VPR violation",
++	[13] = "Secure carveout violation",
++	[16] = "MTS carveout violation",
++	[17] = "Generalized carveout violation",
++	[20] = "Route Sanity error",
++	[21] = "GIC_MSI error",
++};
++
++static const char *const tegra_hub_status_names[32] = {
++	[0] = "coalescer error",
++	[1] = "SMMU BYPASS ALLOW error",
++	[2] = "Illegal tbugrp_id error",
++	[3] = "Malformed MSI request error",
++	[4] = "Read response with poison bit error",
++	[5] = "Restricted access violation error",
++	[6] = "Reserved PA error",
++};
++
++static const char *const tegra264_mc_error_names[4] = {
++	[1] = "EMEM decode error",
++	[2] = "TrustZone violation",
++	[3] = "Carveout violation",
++};
++
++static const char *const tegra_rt_error_names[16] = {
++	[1] = "DECERR_PARTIAL_POPULATED",
++	[2] = "DECERR_SMMU_BYPASS",
++	[3] = "DECERR_INVALID_MMIO",
++	[4] = "DECERR_INVALID_GIC_MSI",
++	[5] = "DECERR_ATOMIC_SYSRAM",
++	[9] = "DECERR_REMOTE_REQ_PRE_BOOT",
++	[10] = "DECERR_ISO_OVER_C2C",
++	[11] = "DECERR_UNSUPPORTED_SBS_OPCODE",
++	[12] = "DECERR_SBS_REQ_OVER_SISO_LL",
++};
+ /*
+  * tegra264_mc_icc_set() - Pass MC client info to the BPMP-FW
+  * @src: ICC node for Memory Controller's (MC) Client
+@@ -289,6 +819,317 @@ static int tegra264_mc_icc_get_init_bw(struct icc_node *node, u32 *avg, u32 *pea
+ 	return 0;
+ }
+ 
++static void mcf_log_fault(struct tegra_mc *mc, u32 channel, unsigned long mcf_ch_intstatus)
++{
++	unsigned int bit;
++
++	for_each_set_bit(bit, &mcf_ch_intstatus, 32) {
++		const char *error = tegra264_mc_status_names[bit] ?: "unknown";
++		u32 intmask = BIT(bit);
++		u32 status_reg, status1_reg = 0, addr_reg, addr_hi_reg = 0;
++		u32 addr_val, value, client_id, i, addr_hi_shift = 0, addr_hi_mask = 0, status1;
++		const char *direction, *secure;
++		const char *client = "unknown", *desc = "NA";
++		phys_addr_t addr = 0;
++		bool is_gsc = false, err_type_valid = false, err_rt_type_valid = false;
++		u8 type;
++		u32 mc_rw_bit = MC_ERR_STATUS_RW, mc_sec_bit = MC_ERR_STATUS_SECURITY;
++
++		switch (intmask) {
++		case MC_INT_DECERR_EMEM:
++			status_reg = mc->soc->mc_regs->mc_err_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_add_reg;
++			addr_hi_reg = mc->soc->mc_regs->mc_err_add_hi_reg;
++			err_type_valid = true;
++			break;
++		case MC_INT_SECURITY_VIOLATION:
++			status_reg = mc->soc->mc_regs->mc_err_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_add_reg;
++			addr_hi_reg = mc->soc->mc_regs->mc_err_add_hi_reg;
++			err_type_valid = true;
++			break;
++		case MC_INT_DECERR_VPR:
++			status_reg = mc->soc->mc_regs->mc_err_vpr_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_vpr_add_reg;
++			addr_hi_shift = MC_ERR_STATUS_ADR_HI_SHIFT;
++			addr_hi_mask = mc->soc->mc_regs->mc_addr_hi_mask;
++			break;
++		case MC_INT_SECERR_SEC:
++			status_reg = mc->soc->mc_regs->mc_err_sec_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_sec_add_reg;
++			addr_hi_shift = MC_ERR_STATUS_ADR_HI_SHIFT;
++			addr_hi_mask = mc->soc->mc_regs->mc_addr_hi_mask;
++			break;
++		case MC_INT_DECERR_MTS:
++			status_reg = mc->soc->mc_regs->mc_err_mts_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_mts_add_reg;
++			addr_hi_shift = MC_ERR_STATUS_ADR_HI_SHIFT;
++			addr_hi_mask = mc->soc->mc_regs->mc_addr_hi_mask;
++			break;
++		case MC_INT_DECERR_GENERALIZED_CARVEOUT:
++			status_reg = mc->soc->mc_regs->mc_err_gen_co_status_reg;
++			status1_reg = MC_ERR_GENERALIZED_CARVEOUT_STATUS_1_0;
++			addr_reg = mc->soc->mc_regs->mc_err_gen_co_add_reg;
++			addr_hi_shift = MC_ERR_STATUS_ADR_HI_SHIFT_GSC;
++			addr_hi_mask = MC_ERR_STATUS_ADR_HI_MASK_GSC;
++			is_gsc = true;
++			break;
++		case MC_INT_DECERR_ROUTE_SANITY:
++			status_reg = mc->soc->mc_regs->mc_err_route_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_route_add_reg;
++			addr_hi_shift = MC_ERR_STATUS_ADR_HI_SHIFT_RT;
++			addr_hi_mask = mc->soc->mc_regs->mc_addr_hi_mask;
++			mc_sec_bit = MC_ERR_ROUTE_SANITY_SEC;
++			mc_rw_bit = MC_ERR_ROUTE_SANITY_RW;
++			err_rt_type_valid = true;
++			break;
++		case MC_INT_DECERR_ROUTE_SANITY_GIC_MSI:
++			status_reg = mc->soc->mc_regs->mc_err_route_status_reg;
++			addr_reg = mc->soc->mc_regs->mc_err_route_add_reg;
++			addr_hi_shift = MC_ERR_STATUS_ADR_HI_SHIFT_RT;
++			addr_hi_mask = mc->soc->mc_regs->mc_addr_hi_mask;
++			mc_sec_bit = MC_ERR_ROUTE_SANITY_SEC;
++			mc_rw_bit = MC_ERR_ROUTE_SANITY_RW;
++			err_rt_type_valid = true;
++			break;
++		default:
++			dev_err_ratelimited(mc->dev, "Incorrect MC interrupt mask\n");
++			break;
++		}
++		value = mc_ch_readl(mc, channel, status_reg);
++		if (addr_hi_reg) {
++			addr = mc_ch_readl(mc, channel, addr_hi_reg);
++		} else {
++			if (!is_gsc) {
++				addr = ((value >> addr_hi_shift) & addr_hi_mask);
++			} else {
++				status1 = mc_ch_readl(mc, channel, status1_reg);
++				addr = ((status1 >> addr_hi_shift) & addr_hi_mask);
++			}
++		}
++		addr <<= 32;
++		addr_val = mc_ch_readl(mc, channel, addr_reg);
++		addr |= addr_val;
++
++		if (value & mc_rw_bit)
++			direction = "write";
++		else
++			direction = "read";
++
++		if (value & mc_sec_bit)
++			secure = "secure";
++		else
++			secure = "non-secure";
++
++		client_id = value & mc->soc->client_id_mask;
++		for (i = 0; i < mc->soc->num_clients; i++) {
++			if (mc->soc->clients[i].id == client_id) {
++				client = mc->soc->clients[i].name;
++				break;
++			}
++		}
++
++		if (err_type_valid) {
++			type = (value & mc->soc->mc_regs->mc_err_status_type_mask) >>
++					MC_ERR_STATUS_TYPE_SHIFT;
++			desc = tegra264_mc_error_names[type];
++		} else if (err_rt_type_valid) {
++			type = (value & MC_ERR_STATUS_TYPE_MASK_RT) >>
++					MC_ERR_STATUS_TYPE_SHIFT_RT;
++			desc = tegra_rt_error_names[type];
++		}
++
++		dev_err_ratelimited(mc->dev, "%s: %s %s @%pa: %s (%s)\n",
++							client, secure, direction, &addr, error,
++							desc);
++		if (is_gsc) {
++			dev_err_ratelimited(mc->dev, "gsc_apr_id=%u gsc_co_apr_id=%u\n",
++					((status1 >> ERR_GENERALIZED_APERTURE_ID_SHIFT)
++					& ERR_GENERALIZED_APERTURE_ID_MASK),
++					((status1 >> ERR_GENERALIZED_CARVEOUT_APERTURE_ID_SHIFT)
++					& ERR_GENERALIZED_CARVEOUT_APERTURE_ID_MASK));
++		}
++	}
++
++	/* clear interrupts */
++	mc_ch_writel(mc, channel, mcf_ch_intstatus, MCF_INTSTATUS_0);
++}
++
++static irqreturn_t handle_mcf_irq(int irq, void *data)
++{
++	struct tegra_mc *mc = data;
++	unsigned long mcf_common_intstat, mcf_intstatus;
++	unsigned int slice;
++
++	/* Read MCF_COMMON_INTSTATUS0_0_0 from MCB block */
++	mcf_common_intstat = mc_ch_readl(mc, MC_BROADCAST_CHANNEL, MCF_COMMON_INTSTATUS0_0_0);
++	if (mcf_common_intstat == 0) {
++		dev_err(mc->dev, "No interrupt in MCF\n");
++		return IRQ_NONE;
++	}
++
++	for_each_set_bit(slice, &mcf_common_intstat, 32) {
++		/* Find out the slice number on which interrupt occurred */
++		if (slice > 4) {
++			dev_err(mc->dev, "Invalid value in registeer MCF_COMMON_INTSTATUS0_0_0\n");
++			return IRQ_NONE;
++		}
++
++		mcf_intstatus = mc_ch_readl(mc, slice, MCF_INTSTATUS_0);
++		if (mcf_intstatus != 0)
++			mcf_log_fault(mc, slice, mcf_intstatus);
++	}
++
++	return IRQ_HANDLED;
++}
++
++static void hub_log_fault(struct tegra_mc *mc, u32 hub, unsigned long hub_intstat)
++{
++	unsigned int bit;
++
++	for_each_set_bit(bit, &hub_intstat, 32) {
++		const char *error = tegra_hub_status_names[bit] ?: "unknown";
++		u32 intmask = BIT(bit), client_id;
++		const char *client = "unknown";
++		u32 status_reg, addr_reg = 0, addr_hi_reg = 0;
++		u32 value, addr_val, i;
++		phys_addr_t addr = 0;
++
++		switch (intmask) {
++		case MSS_HUB_COALESCER_ERR_INTMASK:
++			status_reg = MSS_HUB_RESERVED_PA_ERR_STATUS_0;
++			break;
++		case MSS_HUB_SMMU_BYPASS_ALLOW_ERR_INTMASK:
++			status_reg = MSS_HUB_RESTRICTED_ACCESS_ERR_STATUS_0;
++			break;
++		case MSS_HUB_ILLEGAL_TBUGRP_ID_INTMASK:
++			status_reg = MSS_HUB_POISON_RSP_STATUS_0;
++			break;
++		case MSS_HUB_MSI_ERR_INTMASK:
++			status_reg = MSS_HUB_MSI_ERR_STATUS_0;
++			break;
++		case MSS_HUB_POISON_RSP_INTMASK:
++			status_reg = MSS_HUB_ILLEGAL_TBUGRP_ID_ERR_STATUS_0;
++			break;
++		case MSS_HUB_RESTRICTED_ACCESS_ERR_INTMASK:
++			status_reg = MSS_HUB_SMMU_BYPASS_ALLOW_ERR_STATUS_0;
++			break;
++		case MSS_HUB_RESERVED_PA_ERR_INTMASK:
++			status_reg = MSS_HUB_COALESCE_ERR_STATUS_0;
++			addr_reg = MSS_HUB_COALESCE_ERR_ADR_0;
++			addr_hi_reg = MSS_HUB_COALESCE_ERR_ADR_HI_0;
++			break;
++		default:
++			dev_err_ratelimited(mc->dev, "Incorrect HUB interrupt mask\n");
++			return;
++		}
++
++		value = mc_ch_readl(mc, hub, status_reg);
++		if (addr_reg) {
++			addr = mc_ch_readl(mc, hub, addr_hi_reg);
++			addr <<= 32;
++			addr_val = mc_ch_readl(mc, hub, addr_reg);
++			addr |= addr_val;
++		}
++
++		client_id = value & mc->soc->client_id_mask;
++		for (i = 0; i < mc->soc->num_clients; i++) {
++			if (mc->soc->clients[i].id == client_id) {
++				client = mc->soc->clients[i].name;
++				break;
++			}
++		}
++
++		dev_err_ratelimited(mc->dev, "%s: @%pa: %s status:%u\n",
++							client, &addr, error, value);
++	}
++
++	/* clear interrupts */
++	mc_ch_writel(mc, hub, hub_intstat, MSS_HUB_INTRSTATUS_0);
++}
++
++static irqreturn_t handle_hub_irq(int irq, void *data)
++{
++	struct tegra_mc *mc = data;
++	unsigned long hub_global_intstat, hub_intstat, hub_interrupted = 0;
++	unsigned int hub_gobal_mask = 0x7F00, hub_gobal_shift = 8, hub;
++
++	/* Read MSS_HUB_GLOBAL_INTSTATUS_0 from MCB block */
++	hub_global_intstat = mc_ch_readl(mc, MC_BROADCAST_CHANNEL, MSS_HUB_GLOBAL_INTSTATUS_0);
++	if (hub_global_intstat == 0) {
++		dev_err(mc->dev, "No interrupt in HUB/HUBC\n");
++		return IRQ_NONE;
++	}
++
++	/* Handle interrupt from hubc */
++	if (hub_global_intstat & MSS_HUBC_INTR) {
++		/* Read MSS_HUB_HUBC_INTSTATUS_0 from block MCB */
++		hub_intstat = mc_ch_readl(mc, MC_BROADCAST_CHANNEL, MSS_HUB_HUBC_INTSTATUS_0);
++		if (hub_intstat != 0) {
++			dev_err_ratelimited(mc->dev, "Scrubber operation status:%lu\n",
++								hub_intstat);
++			/* Clear hubc interrupt */
++			mc_ch_writel(mc, MC_BROADCAST_CHANNEL, hub_intstat,
++							MSS_HUB_HUBC_INTSTATUS_0);
++		}
++	}
++
++	hub_interrupted = (hub_global_intstat & hub_gobal_mask) >> hub_gobal_shift;
++	/* Handle interrupt from hub */
++	for_each_set_bit(hub, &hub_interrupted, 32) {
++		/* Read MSS_HUB_INTRSTATUS_0 from block MCi */
++		hub_intstat = mc_ch_readl(mc, hub, MSS_HUB_INTRSTATUS_0);
++		if (hub_intstat != 0)
++			hub_log_fault(mc, hub, hub_intstat);
++	}
++
++	/* Clear global interrupt status register */
++	mc_ch_writel(mc, MC_BROADCAST_CHANNEL, hub_global_intstat, MSS_HUB_GLOBAL_INTSTATUS_0);
++	return IRQ_HANDLED;
++}
++
++static irqreturn_t handle_generic_irq(struct tegra_mc *mc, unsigned long intstat_reg)
++{
++	unsigned long intstat;
++	unsigned int i;
++
++	/* Iterate over all MC blocks to read INTSTATUS */
++	for (i = 0; i < mc->num_channels; i++) {
++		intstat = mc_ch_readl(mc, i, intstat_reg);
++		if (intstat) {
++			dev_err_ratelimited(mc->dev, "channel:%i status:%lu\n", i, intstat);
++			/* Clear interrupt */
++			mc_ch_writel(mc, i, intstat, intstat_reg);
++		}
++	}
++
++	return IRQ_HANDLED;
++}
++
++static irqreturn_t handle_sbs_irq(int irq, void *data)
++{
++	return handle_generic_irq((struct tegra_mc *)data, MSS_SBS_INTSTATUS_0);
++}
++
++static irqreturn_t handle_channel_irq(int irq, void *data)
++{
++	return handle_generic_irq((struct tegra_mc *)data, MC_CH_INTSTATUS_0);
++}
++
++irq_handler_t tegra264_mc_irq_handlers[8] = {
++				handle_mcf_irq, handle_hub_irq, handle_hub_irq,
++				handle_hub_irq, handle_hub_irq, handle_hub_irq,
++				handle_sbs_irq, handle_channel_irq};
++
++const struct tegra_mc_ops tegra264_mc_ops = {
++	.probe = tegra186_mc_probe,
++	.remove = tegra186_mc_remove,
++	.probe_device = tegra186_mc_probe_device,
++	.resume = tegra186_mc_resume,
++	.handle_irq = tegra264_mc_irq_handlers,
++	.num_interrupts = ARRAY_SIZE(tegra264_mc_irq_handlers),
++};
++
+ static const struct tegra_mc_icc_ops tegra264_mc_icc_ops = {
+ 	.xlate = tegra_mc_icc_xlate,
+ 	.aggregate = tegra264_mc_icc_aggregate,
+@@ -296,6 +1137,24 @@ static const struct tegra_mc_icc_ops tegra264_mc_icc_ops = {
+ 	.set = tegra264_mc_icc_set,
+ };
+ 
++static const struct tegra_mc_regs tegra264_mc_regs = {
++	.mc_err_status_reg = 0xbc00,
++	.mc_err_add_reg = 0xbc04,
++	.mc_err_add_hi_reg = 0xbc08,
++	.mc_err_vpr_status_reg = 0xbc20,
++	.mc_err_vpr_add_reg = 0xbc24,
++	.mc_err_sec_status_reg = 0xbc3c,
++	.mc_err_sec_add_reg = 0xbc40,
++	.mc_err_mts_status_reg = 0xbc5c,
++	.mc_err_mts_add_reg = 0xbc60,
++	.mc_err_gen_co_status_reg = 0xbc78,
++	.mc_err_gen_co_add_reg = 0xbc7c,
++	.mc_err_route_status_reg = 0xbc64,
++	.mc_err_route_add_reg = 0xbc68,
++	.mc_addr_hi_mask = 0xff,
++	.mc_err_status_type_mask = (0x3 << 28),
++};
++
+ const struct tegra_mc_soc tegra264_mc_soc = {
+ 	.num_clients = ARRAY_SIZE(tegra264_mc_clients),
+ 	.clients = tegra264_mc_clients,
+@@ -303,10 +1162,6 @@ const struct tegra_mc_soc tegra264_mc_soc = {
+ 	.num_channels = 16,
+ 	.cfg_channel_enable = T264_MC_EMEM_ADR_CFG_CHANNEL_ENABLE,
+ 	.client_id_mask = 0x1ff,
+-	.intmask = MC_INT_DECERR_ROUTE_SANITY |
+-		   MC_INT_DECERR_GENERALIZED_CARVEOUT | MC_INT_DECERR_MTS |
+-		   MC_INT_SECERR_SEC | MC_INT_DECERR_VPR |
+-		   MC_INT_SECURITY_VIOLATION | MC_INT_DECERR_EMEM,
+ 	.has_addr_hi_reg = true,
+ 	.ops = &tegra264_mc_ops,
+ 	.icc_ops = &tegra264_mc_icc_ops,
+@@ -317,4 +1172,20 @@ const struct tegra_mc_soc tegra264_mc_soc = {
+ 	 * supported.
+ 	 */
+ 	.num_carveouts = 32,
+-};
++	.has_chiplet_arch = true,
++	.mc_regs = &tegra264_mc_regs,
++	.mcf_intmask = MC_INT_DECERR_ROUTE_SANITY_GIC_MSI |
++			MC_INT_DECERR_ROUTE_SANITY |
++			MC_INT_DECERR_GENERALIZED_CARVEOUT | MC_INT_DECERR_MTS |
++			MC_INT_SECERR_SEC | MC_INT_DECERR_VPR |
++			MC_INT_SECURITY_VIOLATION | MC_INT_DECERR_EMEM,
++	.hub_intmask = MSS_HUB_COALESCER_ERR_INTMASK | MSS_HUB_SMMU_BYPASS_ALLOW_ERR_INTMASK |
++			MSS_HUB_ILLEGAL_TBUGRP_ID_INTMASK | MSS_HUB_MSI_ERR_INTMASK |
++			MSS_HUB_POISON_RSP_INTMASK | MSS_HUB_RESTRICTED_ACCESS_ERR_INTMASK |
++			MSS_HUB_RESERVED_PA_ERR_INTMASK,
++	.hubc_intmask = MSS_HUB_HUBC_SCRUB_DONE_INTMASK,
++	.sbs_intmask = MSS_SBS_FILL_FIFO_ISO_OVERFLOW_INTMASK |
++			MSS_SBS_FILL_FIFO_SISO_OVERFLOW_INTMASK |
++			MSS_SBS_FILL_FIFO_NISO_OVERFLOW_INTMASK,
++	.mc_ch_intmask = WCAM_ERR_INTMASK,
++};
+\ No newline at end of file
+diff --git a/drivers/memory/tegra/tegra30.c b/drivers/memory/tegra/tegra30.c
+index d3e685c8431f..50988246b1c4 100644
+--- a/drivers/memory/tegra/tegra30.c
++++ b/drivers/memory/tegra/tegra30.c
+@@ -1400,4 +1400,6 @@ const struct tegra_mc_soc tegra30_mc_soc = {
+ 	.num_resets = ARRAY_SIZE(tegra30_mc_resets),
+ 	.icc_ops = &tegra30_mc_icc_ops,
+ 	.ops = &tegra30_mc_ops,
++	.has_chiplet_arch = false,
++	.mc_regs = &tegra20_mc_regs,
+ };
+diff --git a/include/soc/tegra/mc.h b/include/soc/tegra/mc.h
+index 37c26d9d116f..2ee9fec1e070 100644
+--- a/include/soc/tegra/mc.h
++++ b/include/soc/tegra/mc.h
+@@ -14,6 +14,7 @@
+ #include <linux/reset-controller.h>
+ #include <linux/types.h>
+ #include <linux/tegra-icc.h>
++#include <linux/interrupt.h>
+ 
+ struct clk;
+ struct device;
+@@ -164,8 +165,27 @@ struct tegra_mc_ops {
+ 	int (*probe)(struct tegra_mc *mc);
+ 	void (*remove)(struct tegra_mc *mc);
+ 	int (*resume)(struct tegra_mc *mc);
+-	irqreturn_t (*handle_irq)(int irq, void *data);
++	irq_handler_t *handle_irq;
+ 	int (*probe_device)(struct tegra_mc *mc, struct device *dev);
++	unsigned int num_interrupts;
++};
++
++struct tegra_mc_regs {
++	unsigned int mc_err_status_reg;
++	unsigned int mc_err_add_reg;
++	unsigned int mc_err_add_hi_reg;
++	unsigned int mc_err_vpr_status_reg;
++	unsigned int mc_err_vpr_add_reg;
++	unsigned int mc_err_sec_status_reg;
++	unsigned int mc_err_sec_add_reg;
++	unsigned int mc_err_mts_status_reg;
++	unsigned int mc_err_mts_add_reg;
++	unsigned int mc_err_gen_co_status_reg;
++	unsigned int mc_err_gen_co_add_reg;
++	unsigned int mc_err_route_status_reg;
++	unsigned int mc_err_route_add_reg;
++	unsigned int mc_addr_hi_mask;
++	unsigned int mc_err_status_type_mask;
+ };
+ 
+ struct tegra_mc_soc {
+@@ -197,6 +217,13 @@ struct tegra_mc_soc {
+ 
+ 	const struct tegra_mc_icc_ops *icc_ops;
+ 	const struct tegra_mc_ops *ops;
++	bool has_chiplet_arch;
++	u32 mcf_intmask;
++	u32 hub_intmask;
++	u32 hubc_intmask;
++	u32 sbs_intmask;
++	u32 mc_ch_intmask;
++	const struct tegra_mc_regs *mc_regs;
+ };
+ 
+ struct tegra_mc {
+@@ -207,7 +234,6 @@ struct tegra_mc {
+ 	void __iomem *bcast_ch_regs;
+ 	void __iomem **ch_regs;
+ 	struct clk *clk;
+-	int irq;
+ 
+ 	const struct tegra_mc_soc *soc;
+ 	unsigned long tick;
+@@ -257,4 +283,5 @@ tegra_mc_get_carveout_info(struct tegra_mc *mc, unsigned int id,
+ }
+ #endif
+ 
++extern const struct tegra_mc_regs tegra20_mc_regs;
+ #endif /* __SOC_TEGRA_MC_H__ */
+-- 
+2.43.0
+

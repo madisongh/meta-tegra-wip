@@ -1,0 +1,64 @@
+From 0ec7f7331310f04c3481b53d1fbf5de5ec052ccc Mon Sep 17 00:00:00 2001
+From: Wayne Chang <waynec@nvidia.com>
+Date: Thu, 25 May 2023 08:05:01 +0000
+Subject: [PATCH 11/95] NVIDIA: SAUCE: usb: typec: ucsi: Find connector fwnode
+ without relying on order
+
+BugLink: https://bugs.launchpad.net/bugs/2072591
+
+The previous code relied on the order of "connector" nodes under the
+ucsi device node to determine the correct fwnode handle for a connector.
+However, the order of nodes should not be relied upon when parsing device
+trees, especially when using live DT overlays.
+
+This change modifies ucsi_find_fwnode() to find the correct connector
+fwnode by reading the "reg" property of each connector node and
+comparing it to the connector number. If only a single connector node
+exists without a "reg" property, that single node is returned.
+
+This ensures the correct connector fwnode is found regardless of node
+order in the DT.
+
+http://nvbugs/3960851
+http://nvbugs/4063694
+
+Upstream-Status: Backport
+Signed-off-by: Wayne Chang <waynec@nvidia.com>
+Reviewed-by: Prathamesh Shete <pshete@nvidia.com>
+Tested-by: Prathamesh Shete <pshete@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 3dbe65baaacab00634b27237d2189c174d61fcba)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/usb/typec/ucsi/ucsi.c | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/usb/typec/ucsi/ucsi.c b/drivers/usb/typec/ucsi/ucsi.c
+index 3995483a0aa0..4a1346d34496 100644
+--- a/drivers/usb/typec/ucsi/ucsi.c
++++ b/drivers/usb/typec/ucsi/ucsi.c
+@@ -1552,11 +1552,14 @@ static const struct typec_operations ucsi_ops = {
+ static struct fwnode_handle *ucsi_find_fwnode(struct ucsi_connector *con)
+ {
+ 	struct fwnode_handle *fwnode;
+-	int i = 1;
++	u32 index;
++
++	device_for_each_child_node(con->ucsi->dev, fwnode) {
++		if (!fwnode_property_read_u32(fwnode, "reg", &index) && index+1 != con->num)
++			continue;
++		return fwnode;
++	}
+ 
+-	device_for_each_child_node(con->ucsi->dev, fwnode)
+-		if (i++ == con->num)
+-			return fwnode;
+ 	return NULL;
+ }
+ 
+-- 
+2.43.0
+

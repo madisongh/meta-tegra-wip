@@ -1,0 +1,78 @@
+From ca65b13600a95daec216cfb29c46537bc6e47868 Mon Sep 17 00:00:00 2001
+From: Yi-Wei Wang <yiweiw@nvidia.com>
+Date: Tue, 16 Jul 2024 10:35:43 +0800
+Subject: [PATCH 65/95] NVIDIA: SAUCE: pwm: tegra: Introduce offset of PWM
+ enablement
+
+The PWM enablement bit may not always be located at the base address of
+the PWM controller. Hence, an enablement offset is introduced inside the
+tegra_pwm_soc structure to account for potential changes on future
+chips.
+
+http://nvbugs/4748816
+
+Upstream-Status: Backport
+Signed-off-by: Yi-Wei Wang <yiweiw@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 6d9aec7975ca21c8221aa8fbebd33cfb62b865bf)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/pwm/pwm-tegra.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/pwm/pwm-tegra.c b/drivers/pwm/pwm-tegra.c
+index fd73f7a044b8..440c0ac0741b 100644
+--- a/drivers/pwm/pwm-tegra.c
++++ b/drivers/pwm/pwm-tegra.c
+@@ -59,6 +59,7 @@
+ 
+ struct tegra_pwm_soc {
+ 	unsigned int channel_offset;
++	unsigned int enb_offset;
+ 	unsigned int num_channels;
+ };
+ 
+@@ -217,7 +218,7 @@ static int tegra_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
+ 	if (rc)
+ 		return rc;
+ 
+-	enb_offset = pwm->hwpwm * pc->soc->channel_offset;
++	enb_offset = pwm->hwpwm * pc->soc->channel_offset + pc->soc->enb_offset;
+ 	val = pwm_readl(pc, enb_offset);
+ 	val |= PWM_ENABLE;
+ 	pwm_writel(pc, enb_offset, val);
+@@ -231,7 +232,7 @@ static void tegra_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
+ 	unsigned int enb_offset;
+ 	u32 val;
+ 
+-	enb_offset = pwm->hwpwm * pc->soc->channel_offset;
++	enb_offset = pwm->hwpwm * pc->soc->channel_offset + pc->soc->enb_offset;
+ 	val = pwm_readl(pc, enb_offset);
+ 	val &= ~PWM_ENABLE;
+ 	pwm_writel(pc, enb_offset, val);
+@@ -399,16 +400,19 @@ static int __maybe_unused tegra_pwm_runtime_resume(struct device *dev)
+ 
+ static const struct tegra_pwm_soc tegra20_pwm_soc = {
+ 	.channel_offset = 16,
++	.enb_offset = 0,
+ 	.num_channels = 4,
+ };
+ 
+ static const struct tegra_pwm_soc tegra186_pwm_soc = {
+ 	.channel_offset = 0,
++	.enb_offset = 0,
+ 	.num_channels = 1,
+ };
+ 
+ static const struct tegra_pwm_soc tegra194_pwm_soc = {
+ 	.channel_offset = 0,
++	.enb_offset = 0,
+ 	.num_channels = 1,
+ };
+ 
+-- 
+2.43.0
+

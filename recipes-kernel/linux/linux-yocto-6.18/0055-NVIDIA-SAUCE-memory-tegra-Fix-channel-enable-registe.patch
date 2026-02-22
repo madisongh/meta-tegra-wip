@@ -1,0 +1,125 @@
+From 2ed18f25ed070dca9abdd82a70946c8e995a4d45 Mon Sep 17 00:00:00 2001
+From: Ashish Mhetre <amhetre@nvidia.com>
+Date: Tue, 4 Jun 2024 06:53:36 +0000
+Subject: [PATCH 55/95] NVIDIA: SAUCE: memory: tegra: Fix channel enable
+ register
+
+Offset of MC_EMEM_ADR_CFG_CHANNEL_ENABLE_0 has changed for T264.
+Add macro for it and save it in MC SOC struct.
+Use that offset for getting number of channels enabled.
+
+http://nvbugs/4478451
+
+Upstream-Status: Backport
+Signed-off-by: Ashish Mhetre <amhetre@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 4c428a18bfcb4bd2c50dbaa9f2bca7714abb50f3)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/memory/tegra/mc.c       | 9 +++++++--
+ drivers/memory/tegra/mc.h       | 1 +
+ drivers/memory/tegra/tegra186.c | 1 +
+ drivers/memory/tegra/tegra194.c | 1 +
+ drivers/memory/tegra/tegra234.c | 1 +
+ drivers/memory/tegra/tegra264.c | 1 +
+ include/soc/tegra/mc.h          | 1 +
+ 7 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/memory/tegra/mc.c b/drivers/memory/tegra/mc.c
+index 6edb210287dc..c29203c5a014 100644
+--- a/drivers/memory/tegra/mc.c
++++ b/drivers/memory/tegra/mc.c
+@@ -883,8 +883,13 @@ static void tegra_mc_num_channel_enabled(struct tegra_mc *mc)
+ 	unsigned int i;
+ 	u32 value;
+ 
+-	value = mc_ch_readl(mc, 0, MC_EMEM_ADR_CFG_CHANNEL_ENABLE);
+-	if (value <= 0) {
++	if(mc->soc->cfg_channel_enable) {
++		value = mc_ch_readl(mc, 0, mc->soc->cfg_channel_enable);
++		if (value <= 0) {
++			mc->num_channels = mc->soc->num_channels;
++			return;
++		}
++	} else {
+ 		mc->num_channels = mc->soc->num_channels;
+ 		return;
+ 	}
+diff --git a/drivers/memory/tegra/mc.h b/drivers/memory/tegra/mc.h
+index a0dea0601a41..2519bb4248fd 100644
+--- a/drivers/memory/tegra/mc.h
++++ b/drivers/memory/tegra/mc.h
+@@ -54,6 +54,7 @@
+ #define MC_ERR_GENERALIZED_CARVEOUT_STATUS		0xc00
+ #define MC_ERR_GENERALIZED_CARVEOUT_ADR			0xc04
+ #define MC_EMEM_ADR_CFG_CHANNEL_ENABLE			0xdf8
++#define T264_MC_EMEM_ADR_CFG_CHANNEL_ENABLE		0x8870
+ #define MC_GLOBAL_INTSTATUS				0xf24
+ #define MC_ERR_ADR_HI					0x11fc
+ 
+diff --git a/drivers/memory/tegra/tegra186.c b/drivers/memory/tegra/tegra186.c
+index 1e012b7198fa..2661bca48a06 100644
+--- a/drivers/memory/tegra/tegra186.c
++++ b/drivers/memory/tegra/tegra186.c
+@@ -914,6 +914,7 @@ const struct tegra_mc_soc tegra186_mc_soc = {
+ 	.clients = tegra186_mc_clients,
+ 	.num_address_bits = 40,
+ 	.num_channels = 4,
++	.cfg_channel_enable = MC_EMEM_ADR_CFG_CHANNEL_ENABLE,
+ 	.client_id_mask = 0xff,
+ 	.intmask = MC_INT_DECERR_GENERALIZED_CARVEOUT | MC_INT_DECERR_MTS |
+ 		   MC_INT_SECERR_SEC | MC_INT_DECERR_VPR |
+diff --git a/drivers/memory/tegra/tegra194.c b/drivers/memory/tegra/tegra194.c
+index 26035ac3a1eb..a98bc042e8ac 100644
+--- a/drivers/memory/tegra/tegra194.c
++++ b/drivers/memory/tegra/tegra194.c
+@@ -1348,6 +1348,7 @@ const struct tegra_mc_soc tegra194_mc_soc = {
+ 	.clients = tegra194_mc_clients,
+ 	.num_address_bits = 40,
+ 	.num_channels = 16,
++	.cfg_channel_enable = MC_EMEM_ADR_CFG_CHANNEL_ENABLE,
+ 	.client_id_mask = 0xff,
+ 	.intmask = MC_INT_DECERR_ROUTE_SANITY |
+ 		   MC_INT_DECERR_GENERALIZED_CARVEOUT | MC_INT_DECERR_MTS |
+diff --git a/drivers/memory/tegra/tegra234.c b/drivers/memory/tegra/tegra234.c
+index 5f57cea48b62..2593993ea7e0 100644
+--- a/drivers/memory/tegra/tegra234.c
++++ b/drivers/memory/tegra/tegra234.c
+@@ -1137,6 +1137,7 @@ const struct tegra_mc_soc tegra234_mc_soc = {
+ 	.clients = tegra234_mc_clients,
+ 	.num_address_bits = 40,
+ 	.num_channels = 16,
++	.cfg_channel_enable = MC_EMEM_ADR_CFG_CHANNEL_ENABLE,
+ 	.client_id_mask = 0x1ff,
+ 	.intmask = MC_INT_DECERR_ROUTE_SANITY |
+ 		   MC_INT_DECERR_GENERALIZED_CARVEOUT | MC_INT_DECERR_MTS |
+diff --git a/drivers/memory/tegra/tegra264.c b/drivers/memory/tegra/tegra264.c
+index 5f1dc958f642..f8d1a4b32b81 100644
+--- a/drivers/memory/tegra/tegra264.c
++++ b/drivers/memory/tegra/tegra264.c
+@@ -301,6 +301,7 @@ const struct tegra_mc_soc tegra264_mc_soc = {
+ 	.clients = tegra264_mc_clients,
+ 	.num_address_bits = 40,
+ 	.num_channels = 16,
++	.cfg_channel_enable = T264_MC_EMEM_ADR_CFG_CHANNEL_ENABLE,
+ 	.client_id_mask = 0x1ff,
+ 	.intmask = MC_INT_DECERR_ROUTE_SANITY |
+ 		   MC_INT_DECERR_GENERALIZED_CARVEOUT | MC_INT_DECERR_MTS |
+diff --git a/include/soc/tegra/mc.h b/include/soc/tegra/mc.h
+index 6ee4c59db620..37c26d9d116f 100644
+--- a/include/soc/tegra/mc.h
++++ b/include/soc/tegra/mc.h
+@@ -182,6 +182,7 @@ struct tegra_mc_soc {
+ 
+ 	u16 client_id_mask;
+ 	u8 num_channels;
++	const u32 cfg_channel_enable;
+ 
+ 	const struct tegra_smmu_soc *smmu;
+ 
+-- 
+2.43.0
+

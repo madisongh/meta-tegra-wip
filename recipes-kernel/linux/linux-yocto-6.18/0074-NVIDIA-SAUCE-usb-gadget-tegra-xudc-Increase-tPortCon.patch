@@ -1,0 +1,83 @@
+From 453186a46bd9e52ab2d8818de046b6249a7c8f3f Mon Sep 17 00:00:00 2001
+From: Wayne Chang <waynec@nvidia.com>
+Date: Tue, 3 Sep 2024 09:04:19 +0000
+Subject: [PATCH 74/95] NVIDIA: SAUCE: usb: gadget: tegra-xudc: Increase
+ tPortConfiguration timeout
+
+The default tPortConfiguration timeout is too small.
+Enlarge the timeout configuration to ensure better reliability.
+
+http://nvbugs/4786323
+
+Upstream-Status: Backport
+Signed-off-by: Wayne Chang <waynec@nvidia.com>
+Reviewed-by: Henry Lin <henryl@nvidia.com>
+Reviewed-by: WK Tsai <wtsai@nvidia.com>
+Reviewed-by: HaoTien Hsu <haotienh@nvidia.com>
+Signed-off-by: Vishwaroop A <va@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 5094618371cdb78a50c3660e7b859f4dd07c843e)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/usb/gadget/udc/tegra-xudc.c | 24 ++++++++++++++++++++----
+ 1 file changed, 20 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/usb/gadget/udc/tegra-xudc.c b/drivers/usb/gadget/udc/tegra-xudc.c
+index 92608555c000..31f99f71940c 100644
+--- a/drivers/usb/gadget/udc/tegra-xudc.c
++++ b/drivers/usb/gadget/udc/tegra-xudc.c
+@@ -146,10 +146,6 @@
+ #define SSPX_CORE_CNT0 0x610
+ #define  SSPX_CORE_CNT0_PING_TBURST_MASK GENMASK(7, 0)
+ #define  SSPX_CORE_CNT0_PING_TBURST(x) ((x) & SSPX_CORE_CNT0_PING_TBURST_MASK)
+-#define SSPX_CORE_CNT30 0x688
+-#define  SSPX_CORE_CNT30_LMPITP_TIMER_MASK GENMASK(19, 0)
+-#define  SSPX_CORE_CNT30_LMPITP_TIMER(x) ((x) & \
+-					SSPX_CORE_CNT30_LMPITP_TIMER_MASK)
+ #define  SSPX_CORE_CNT32_POLL_TBURST_MAX_MASK GENMASK(7, 0)
+ #define  SSPX_CORE_CNT32_POLL_TBURST_MAX(x) ((x) & \
+ 					SSPX_CORE_CNT32_POLL_TBURST_MAX_MASK)
+@@ -3485,11 +3481,18 @@ static void tegra186_xudc_device_params_init(struct tegra_xudc *xudc)
+ 	val |= SSPX_CORE_CNT0_PING_TBURST(0xa);
+ 	xudc_writel(xudc, val, SSPX_CORE_CNT0);
+ 
++#define SSPX_CORE_CNT30 0x688
++#define  SSPX_CORE_CNT30_LMPITP_TIMER_MASK GENMASK(19, 0)
++#define  SSPX_CORE_CNT30_LMPITP_TIMER(x) ((x) & \
++					SSPX_CORE_CNT30_LMPITP_TIMER_MASK)
+ 	/* Default tPortConfiguration timeout is too small. */
+ 	val = xudc_readl(xudc, SSPX_CORE_CNT30);
+ 	val &= ~(SSPX_CORE_CNT30_LMPITP_TIMER_MASK);
+ 	val |= SSPX_CORE_CNT30_LMPITP_TIMER(0x978);
+ 	xudc_writel(xudc, val, SSPX_CORE_CNT30);
++#undef SSPX_CORE_CNT30
++#undef SSPX_CORE_CNT30_LMPITP_TIMER_MASK
++#undef SSPX_CORE_CNT30_LMPITP_TIMER
+ 
+ 	/*
+ 	 * Compliance suite appears to be violating polling
+@@ -3521,6 +3524,19 @@ static void tegra264_xudc_device_params_init(struct tegra_xudc *xudc)
+ 	val |= SSPX_CORE_CNT13_CRDTHP_TIMER(0x33);
+ 	xudc_writel(xudc, val, SSPX_CORE_CNT13);
+ 
++#define SSPX_CORE_CNT30 0x4088
++#define  SSPX_CORE_CNT30_LMPITP_TIMER_MASK GENMASK(11, 0)
++#define  SSPX_CORE_CNT30_LMPITP_TIMER(x) ((x) & \
++					SSPX_CORE_CNT30_LMPITP_TIMER_MASK)
++       /* Default tPortConfiguration timeout is too small. */
++	val = xudc_readl(xudc, SSPX_CORE_CNT30);
++	val &= ~(SSPX_CORE_CNT30_LMPITP_TIMER_MASK);
++	val |= SSPX_CORE_CNT30_LMPITP_TIMER(0xc9);;
++	xudc_writel(xudc, val, SSPX_CORE_CNT30);
++#undef SSPX_CORE_CNT30
++#undef SSPX_CORE_CNT30_LMPITP_TIMER_MASK
++#undef SSPX_CORE_CNT30_LMPITP_TIMER
++
+ #define SSPX_CORE_CNT32 0x4090
+ 	/*
+ 	 * Compliance suite appears to be violating polling
+-- 
+2.43.0
+

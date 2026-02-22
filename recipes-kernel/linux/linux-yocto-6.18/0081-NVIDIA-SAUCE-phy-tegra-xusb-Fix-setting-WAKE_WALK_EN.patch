@@ -1,0 +1,51 @@
+From 0b02a45c0347f28f21c68ef3fcb6263d1a0ec698 Mon Sep 17 00:00:00 2001
+From: haotienh <haotienh@nvidia.com>
+Date: Thu, 6 Feb 2025 21:31:19 +0000
+Subject: [PATCH 81/95] NVIDIA: SAUCE: phy: tegra: xusb: Fix setting
+ WAKE_WALK_EN
+
+Set WAKE_WALK_EN correctly, after reviewing the programming sequences.
+
+http://nvbugs/4804339
+
+Upstream-Status: Backport
+Signed-off-by: haotienh <haotienh@nvidia.com>
+Reviewed-by: Henry Lin <henryl@nvidia.com>
+Reviewed-by: EJ Hsu <ejh@nvidia.com>
+Reviewed-by: WK Tsai <wtsai@nvidia.com>
+Reviewed-by: Wayne Chang <waynec@nvidia.com>
+Signed-off-by: Vishwaroop A <va@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 0302284a2f1c00ad7f494968f831bd857137bf58)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/phy/tegra/xusb-tegra186.c | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/phy/tegra/xusb-tegra186.c b/drivers/phy/tegra/xusb-tegra186.c
+index f0d6388eb1c9..739649c14d4c 100644
+--- a/drivers/phy/tegra/xusb-tegra186.c
++++ b/drivers/phy/tegra/xusb-tegra186.c
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+- * SPDX-FileCopyrightText: Copyright (c) 2016-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++ * SPDX-FileCopyrightText: Copyright (c) 2016-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  */
+ 
+ #include <linux/delay.h>
+@@ -431,8 +431,7 @@ static int tegra186_utmi_enable_phy_sleepwalk(struct tegra_xusb_lane *lane,
+ 
+ 	/* enable the trigger of the sleepwalk logic */
+ 	value = ao_readl(priv, XUSB_AO_UTMIP_SLEEPWALK_CFG(index));
+-	value |= LINEVAL_WALK_EN;
+-	value &= ~WAKE_WALK_EN;
++	value |= LINEVAL_WALK_EN | WAKE_WALK_EN;
+ 	ao_writel(priv, value, XUSB_AO_UTMIP_SLEEPWALK_CFG(index));
+ 
+ 	/* reset the walk pointer and clear the alarm of the sleepwalk logic,
+-- 
+2.43.0
+

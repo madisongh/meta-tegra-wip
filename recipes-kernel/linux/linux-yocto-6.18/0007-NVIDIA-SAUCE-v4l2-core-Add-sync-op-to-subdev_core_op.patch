@@ -1,0 +1,85 @@
+From abcf4a936581af0fd55680200ad382b4c01cc6bc Mon Sep 17 00:00:00 2001
+From: Frank Chen <frankc@nvidia.com>
+Date: Tue, 29 Nov 2022 11:14:18 -0800
+Subject: [PATCH 07/95] NVIDIA: SAUCE: v4l2-core: Add sync op to
+ subdev_core_ops
+
+BugLink: https://bugs.launchpad.net/bugs/2072591
+
+If multiple sub devices need to be synchronized w.r.t one
+sub device state, then this op can be used.
+
+For example in camera system, configuring focuser position and
+sensor capture have to be synchronized when the ROI for focuser
+ends. Writing focus position on improper boundary causes unexpected
+output.
+
+Also, add the macro V4L2_EVENT_SRC_ERROR for use in vi4_fops.c
+
+http://nvbugs/200602400
+
+Upstream-Status: Backport
+Signed-off-by: Frank Chen <frankc@nvidia.com>
+Tested-by: Abhilash G <abhilashg@nvidia.com>
+Reviewed-by: Abhilash G <abhilashg@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ include/media/v4l2-subdev.h    | 11 +++++++++++
+ include/uapi/linux/videodev2.h |  1 +
+ 2 files changed, 12 insertions(+)
+
+diff --git a/include/media/v4l2-subdev.h b/include/media/v4l2-subdev.h
+index e0bb58cb6d04..96343c330a41 100644
+--- a/include/media/v4l2-subdev.h
++++ b/include/media/v4l2-subdev.h
+@@ -139,6 +139,10 @@ struct v4l2_subdev_io_pin_config {
+ 	u8 strength;
+ };
+ 
++#define V4L2_SYNC_EVENT_SUBDEV_ERROR_RECOVER (1 << 2)
++#define V4L2_SYNC_EVENT_FOCUS_POS		(1 << 0)
++#define V4L2_SYNC_EVENT_IRIS_POS		(1 << 1)
++
+ /**
+  * struct v4l2_subdev_core_ops - Define core ops callbacks for subdevs
+  *
+@@ -192,6 +196,12 @@ struct v4l2_subdev_io_pin_config {
+  *		     for it to be warned when the value of a control changes.
+  *
+  * @unsubscribe_event: remove event subscription from the control framework.
++ * @sync: some sub devices can only make certain changes at certain times.
++ * 	For example, a sensor can change the focus only during the blanking period.
++ * 	This callback can be used to perform these changes when a certain event occurs.
++ * 	A master device (usually the bridge driver) will call this callback with the
++ * 	event(s) that occurred and the sub device checks the event mask for the event(s)
++ * 	on which they have to synchronize their pending changes.
+  */
+ struct v4l2_subdev_core_ops {
+ 	int (*log_status)(struct v4l2_subdev *sd);
+@@ -218,6 +228,7 @@ struct v4l2_subdev_core_ops {
+ 			       struct v4l2_event_subscription *sub);
+ 	int (*unsubscribe_event)(struct v4l2_subdev *sd, struct v4l2_fh *fh,
+ 				 struct v4l2_event_subscription *sub);
++	int (*sync)(struct v4l2_subdev *sd, unsigned int sync_events);
+ };
+ 
+ /**
+diff --git a/include/uapi/linux/videodev2.h b/include/uapi/linux/videodev2.h
+index becd08fdbddb..95a5e76e8c26 100644
+--- a/include/uapi/linux/videodev2.h
++++ b/include/uapi/linux/videodev2.h
+@@ -2580,6 +2580,7 @@ struct v4l2_event_frame_sync {
+ };
+ 
+ #define V4L2_EVENT_SRC_CH_RESOLUTION		(1 << 0)
++#define V4L2_EVENT_SRC_ERROR			(1 << 1)
+ 
+ struct v4l2_event_src_change {
+ 	__u32 changes;
+-- 
+2.43.0
+

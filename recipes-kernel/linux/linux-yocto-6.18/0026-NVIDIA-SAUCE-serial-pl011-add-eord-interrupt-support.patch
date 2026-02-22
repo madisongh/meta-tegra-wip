@@ -1,0 +1,268 @@
+From eb680972b9aab611812d27903204ccced8eb1159 Mon Sep 17 00:00:00 2001
+From: kartik <kkartik@nvidia.com>
+Date: Thu, 18 Nov 2021 13:49:09 +0530
+Subject: [PATCH 26/95] NVIDIA: SAUCE: serial: pl011: add eord interrupt
+ support
+
+BugLink: https://bugs.launchpad.net/bugs/2080908
+
+Nvidia Tegra pl011 controller supports EORD interrupt that triggers
+when there is no data in RX FIFO and no data is received for 4 frame
+duration.
+
+Add support for EORD interrupt.
+
+http://nvbugs/3414248
+
+Upstream-Status: Backport
+Signed-off-by: kartik <kkartik@nvidia.com>
+Reviewed-by: Petlozu Pravareshwar <petlozup@nvidia.com>
+Tested-by: Petlozu Pravareshwar <petlozup@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit d34b3dad7de8d66bf4b88a466f32ebf9c42ddb8f)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/tty/serial/amba-pl011.c | 115 ++++++++++++++++++++++++++------
+ include/linux/amba/serial.h     |  16 +++++
+ 2 files changed, 111 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/tty/serial/amba-pl011.c b/drivers/tty/serial/amba-pl011.c
+index 6eac833fb5d2..2b7149cde1c9 100644
+--- a/drivers/tty/serial/amba-pl011.c
++++ b/drivers/tty/serial/amba-pl011.c
+@@ -79,6 +79,10 @@ enum {
+ 	REG_ST_ITIP,
+ 	REG_ST_ABCR,
+ 	REG_ST_ABIMSC,
++	REG_NV_MIS,
++	REG_NV_MIM,
++	REG_NV_MMIS,
++	REG_NV_MIC,
+ 
+ 	/* The size of the array - must be last */
+ 	REG_ARRAY_SIZE,
+@@ -117,6 +121,7 @@ struct vendor_data {
+ 	bool			fixed_options;
+ 	bool			enable_car;
+ 	bool			dma_workaround;
++	bool			eord_interrupt;
+ 
+ 	unsigned int (*get_fifosize)(struct amba_device *dev);
+ };
+@@ -126,23 +131,6 @@ static unsigned int get_fifosize_arm(struct amba_device *dev)
+ 	return amba_rev(dev) < 3 ? 16 : 32;
+ }
+ 
+-static struct vendor_data vendor_nvidia = {
+-	.reg_offset		= pl011_std_offsets,
+-	.ifls			= UART011_IFLS_RX4_8|UART011_IFLS_TX4_8,
+-	.fr_busy		= UART01x_FR_BUSY,
+-	.fr_dsr			= UART01x_FR_DSR,
+-	.fr_cts			= UART01x_FR_CTS,
+-	.fr_ri			= UART011_FR_RI,
+-	.oversampling		= false,
+-	.dma_threshold		= false,
+-	.cts_event_workaround	= false,
+-	.always_enabled		= false,
+-	.fixed_options		= false,
+-	.enable_car		= true,
+-	.dma_workaround		= true,
+-	.get_fifosize		= get_fifosize_arm,
+-};
+-
+ static struct vendor_data vendor_arm = {
+ 	.reg_offset		= pl011_std_offsets,
+ 	.ifls			= UART011_IFLS_RX4_8 | UART011_IFLS_TX4_8,
+@@ -189,6 +177,44 @@ static const struct vendor_data vendor_qdt_qdf2400_e44 = {
+ };
+ #endif
+ 
++static u16 pl011_tegra_offsets[REG_ARRAY_SIZE] = {
++	[REG_DR] = UART01x_DR,
++	[REG_FR] = UART01x_FR,
++	[REG_LCRH_RX] = UART011_LCRH,
++	[REG_LCRH_TX] = UART011_LCRH,
++	[REG_IBRD] = UART011_IBRD,
++	[REG_FBRD] = UART011_FBRD,
++	[REG_CR] = UART011_CR,
++	[REG_IFLS] = UART011_IFLS,
++	[REG_IMSC] = UART011_IMSC,
++	[REG_RIS] = UART011_RIS,
++	[REG_MIS] = UART011_MIS,
++	[REG_ICR] = UART011_ICR,
++	[REG_DMACR] = UART011_DMACR,
++	[REG_NV_MIS] = NV_UART011_MIS,
++	[REG_NV_MIM] = NV_UART011_MIM,
++	[REG_NV_MMIS] = NV_UART011_MIS,
++	[REG_NV_MIC] = NV_UART011_MIC,
++};
++
++static struct vendor_data vendor_nvidia = {
++	.reg_offset		= pl011_tegra_offsets,
++	.ifls			= UART011_IFLS_RX4_8|UART011_IFLS_TX4_8,
++	.fr_busy		= UART01x_FR_BUSY,
++	.fr_dsr			= UART01x_FR_DSR,
++	.fr_cts			= UART01x_FR_CTS,
++	.fr_ri			= UART011_FR_RI,
++	.oversampling		= false,
++	.dma_threshold		= false,
++	.cts_event_workaround	= false,
++	.always_enabled		= false,
++	.fixed_options		= false,
++	.enable_car		= true,
++	.dma_workaround		= true,
++	.eord_interrupt		= true,
++	.get_fifosize		= get_fifosize_arm,
++};
++
+ static u16 pl011_st_offsets[REG_ARRAY_SIZE] = {
+ 	[REG_DR] = UART01x_DR,
+ 	[REG_ST_DMAWM] = ST_UART011_DMAWM,
+@@ -1475,6 +1501,9 @@ static void pl011_stop_rx(struct uart_port *port)
+ 		     UART011_PEIM | UART011_BEIM | UART011_OEIM);
+ 	pl011_write(uap->im, uap, REG_IMSC);
+ 
++	if (uap->vendor->eord_interrupt)
++		pl011_write(~NV_UART011_EORDIM, uap, REG_NV_MIM);
++
+ 	pl011_dma_rx_stop(uap);
+ }
+ 
+@@ -1634,6 +1663,7 @@ static irqreturn_t pl011_int(int irq, void *dev_id)
+ {
+ 	struct uart_amba_port *uap = dev_id;
+ 	unsigned int status, pass_counter = AMBA_ISR_PASS_LIMIT;
++	unsigned long flags;
+ 	int handled = 0;
+ 
+ 	uart_port_lock(&uap->port);
+@@ -1650,6 +1680,14 @@ static irqreturn_t pl011_int(int irq, void *dev_id)
+ 					pl011_dma_rx_irq(uap);
+ 				else
+ 					pl011_rx_chars(uap);
++
++				/*
++				 * Clear EORD interrupt as receive timeout
++				 * interrupt already triggered.
++				 */
++				if (uap->vendor->eord_interrupt)
++					pl011_write(NV_UART011_EORDIC, uap,
++						    REG_NV_MIC);
+ 			}
+ 			if (status & (UART011_DSRMIS | UART011_DCDMIS |
+ 				      UART011_CTSMIS | UART011_RIMIS))
+@@ -1662,10 +1700,38 @@ static irqreturn_t pl011_int(int irq, void *dev_id)
+ 
+ 			status = pl011_read(uap, REG_RIS) & uap->im;
+ 		} while (status != 0);
++		handled = 1;
++	} else {
++		/*
++		 * We are here because Receive timeout interrupt did not fire.
++		 * Check if EORD interrupt is supported.
++		 */
++		if (!uap->vendor->eord_interrupt)
++			goto out;
++
++		status = pl011_read(uap, REG_NV_MMIS);
++		if (!status)
++			goto out;
++
++		do {
++			pl011_write(NV_UART011_EORDIC, uap,
++				    REG_NV_MIC);
++
++			if (status & NV_UART011_EORDIS) {
++				if (pl011_dma_rx_running(uap))
++					pl011_dma_rx_irq(uap);
++				else
++					pl011_rx_chars(uap);
++			}
++
++			status = pl011_read(uap, REG_NV_MMIS);
++		} while (status != 0);
++
+ 		handled = 1;
+ 	}
+ 
+-	uart_unlock_and_check_sysrq(&uap->port);
++out:
++	uart_port_unlock_irqrestore(&uap->port, flags);
+ 
+ 	return IRQ_RETVAL(handled);
+ }
+@@ -1904,8 +1970,13 @@ static void pl011_enable_interrupts(struct uart_amba_port *uap)
+ 	}
+ 
+ 	uap->im = UART011_RTIM;
+-	if (!pl011_dma_rx_running(uap))
++	if (!pl011_dma_rx_running(uap)) {
+ 		uap->im |= UART011_RXIM;
++	} else {
++		/* Enable EORD interrupt only if DMA is running. */
++		if (uap->vendor->eord_interrupt)
++			pl011_write(NV_UART011_EORDIM, uap, REG_NV_MIM);
++	}
+ 	pl011_write(uap->im, uap, REG_IMSC);
+ 	uart_port_unlock_irqrestore(&uap->port, flags);
+ }
+@@ -1918,8 +1989,12 @@ static void pl011_unthrottle_rx(struct uart_port *port)
+ 	uart_port_lock_irqsave(&uap->port, &flags);
+ 
+ 	uap->im = UART011_RTIM;
+-	if (!pl011_dma_rx_running(uap))
++	if (!pl011_dma_rx_running(uap)) {
+ 		uap->im |= UART011_RXIM;
++	} else {
++		if (uap->vendor->eord_interrupt)
++			pl011_write(NV_UART011_EORDIM, uap, REG_NV_MIM);
++	}
+ 
+ 	pl011_write(uap->im, uap, REG_IMSC);
+ 
+diff --git a/include/linux/amba/serial.h b/include/linux/amba/serial.h
+index 9120de05ead0..a752ebbe69a1 100644
+--- a/include/linux/amba/serial.h
++++ b/include/linux/amba/serial.h
+@@ -94,6 +94,14 @@
+ #define UART01x_FR_DCD		BIT(2)
+ #define UART01x_FR_DSR		BIT(1)
+ #define UART01x_FR_CTS		BIT(0)
++/*
++ * Nvidia Tegra UART supports EORD interrupt through misc registers.
++ */
++#define NV_UART011_MIS		0x1008	/* MISC interrupt status */
++#define NV_UART011_MIM		0x100c	/* MISC interrupt mask  */
++#define NV_UART011_MMIS		0x1010	/* MISC masked interrupt status */
++#define NV_UART011_MIC		0x1014	/* MISC interrupt clear */
++
+ #define UART01x_FR_TMSK		(UART01x_FR_TXFF + UART01x_FR_BUSY)
+ 
+ /*
+@@ -208,12 +216,20 @@
+ #define UART011_CTSMIC		BIT(1)	/* CTS interrupt clear */
+ #define UART011_RIMIC		BIT(0)	/* RI interrupt clear */
+ 
++/* Values for Nvidia MISC interrupts */
++#define NV_UART011_EORDIC	(1 << 0)	/* EORD interrupt clear */
++
+ #define UART011_DMAONERR	BIT(2)	/* disable dma on error */
+ #define UART011_TXDMAE		BIT(1)	/* enable transmit dma */
+ #define UART011_RXDMAE		BIT(0)	/* enable receive dma */
+ 
+ #define UART01x_RSR_ANY		(UART01x_RSR_OE | UART01x_RSR_BE | UART01x_RSR_PE | UART01x_RSR_FE)
+ #define UART01x_FR_MODEM_ANY	(UART01x_FR_DCD | UART01x_FR_DSR | UART01x_FR_CTS)
++/* Values for Nvidia MISC interrupts */
++#define NV_UART011_EORDIM	(1 << 0)	/* EORD interrupt mask */
++
++/* Values for Nvidia MISC interrupts */
++#define NV_UART011_EORDIS	(1 << 0)	/* EORD interrupt status */
+ 
+ #ifndef __ASSEMBLY__
+ struct amba_device; /* in uncompress this is included but amba/bus.h is not */
+-- 
+2.43.0
+

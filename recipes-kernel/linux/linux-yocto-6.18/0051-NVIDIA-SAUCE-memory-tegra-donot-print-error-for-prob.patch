@@ -1,0 +1,43 @@
+From 28c07d654a7c30d437cd1e9fc445f6b3f04df94f Mon Sep 17 00:00:00 2001
+From: Sumit Gupta <sumitg@nvidia.com>
+Date: Mon, 2 Sep 2024 17:42:40 +0530
+Subject: [PATCH 51/95] NVIDIA: SAUCE: memory: tegra: donot print error for
+ probe defer
+
+Use dev_err_probe() to print debug or error message depending on
+whether the error value from devm_clk_get() is '-EPROBE_DEFER'.
+
+http://nvbugs/4758096
+
+Upstream-Status: Backport
+Signed-off-by: Sumit Gupta <sumitg@nvidia.com>
+Tested-by: Petlozu Pravareshwar <petlozup@nvidia.com>
+Reviewed-by: Petlozu Pravareshwar <petlozup@nvidia.com>
+Reviewed-by: Laxman Dewangan <ldewangan@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 2f2f9bc4881600444ed865bee94ae4978093ae01)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/memory/tegra/tegra186-emc.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/memory/tegra/tegra186-emc.c b/drivers/memory/tegra/tegra186-emc.c
+index d6cd90c7ad53..8d2b7b3ab451 100644
+--- a/drivers/memory/tegra/tegra186-emc.c
++++ b/drivers/memory/tegra/tegra186-emc.c
+@@ -326,8 +326,7 @@ static int tegra186_emc_probe(struct platform_device *pdev)
+ 
+ 	emc->clk = devm_clk_get(&pdev->dev, "emc");
+ 	if (IS_ERR(emc->clk)) {
+-		err = PTR_ERR(emc->clk);
+-		dev_err(&pdev->dev, "failed to get EMC clock: %d\n", err);
++		err = dev_err_probe(&pdev->dev, PTR_ERR(emc->clk), "failed to get EMC clock\n");
+ 		goto put_bpmp;
+ 	}
+ 
+-- 
+2.43.0
+

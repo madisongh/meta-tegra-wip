@@ -1,0 +1,65 @@
+From 2339fa29a799cd32a065daea9fb9b8d5ad6e2ec6 Mon Sep 17 00:00:00 2001
+From: Revanth Kumar Uppala <ruppala@nvidia.com>
+Date: Wed, 19 Feb 2025 09:49:30 +0000
+Subject: [PATCH 83/95] NVIDIA: SAUCE: net: phy: aquantia: Poll for valid FW
+ ID.
+
+Ethernet link up fails after SC7 resume as ethernet settings are
+configured before phy firmware is completely loaded.
+
+Firmware ID will be shown as 0xFFFF if firmware is not yet loaded.
+So, add this too in the exit condition of the poll so that poll
+won't exit for 0xFFFF and continues till init completion with valid
+FW ID.
+
+http://nvbugs/4382502
+http://nvbugs/4980644
+
+Upstream-Status: Backport
+Signed-off-by: Revanth Kumar Uppala <ruppala@nvidia.com>
+Reviewed-by: Bhadram Varka <vbhadram@nvidia.com>
+Reviewed-by: Pohsun Su <pohsuns@nvidia.com>
+Reviewed-by: Narayan Reddy <narayanr@nvidia.com>
+Reviewed-by: Bibek Basu <bbasu@nvidia.com>
+Reviewed-by: Jon Hunter <jonathanh@nvidia.com>
+Signed-off-by: Vishwaroop A <va@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 888939cc5f0f869d4a8134a64a77518d1a39eb87)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/net/phy/aquantia/aquantia.h      | 1 +
+ drivers/net/phy/aquantia/aquantia_main.c | 4 +++-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/phy/aquantia/aquantia.h b/drivers/net/phy/aquantia/aquantia.h
+index 31427ee343e3..62a427b37b35 100644
+--- a/drivers/net/phy/aquantia/aquantia.h
++++ b/drivers/net/phy/aquantia/aquantia.h
+@@ -20,6 +20,7 @@
+ #define VEND1_GLOBAL_FW_ID			0x0020
+ #define VEND1_GLOBAL_FW_ID_MAJOR		GENMASK(15, 8)
+ #define VEND1_GLOBAL_FW_ID_MINOR		GENMASK(7, 0)
++#define VEND1_GLOBAL_FW_ID_MASK			GENMASK(15, 0)
+ 
+ #define VEND1_GLOBAL_MAILBOX_INTERFACE1			0x0200
+ #define VEND1_GLOBAL_MAILBOX_INTERFACE1_EXECUTE		BIT(15)
+diff --git a/drivers/net/phy/aquantia/aquantia_main.c b/drivers/net/phy/aquantia/aquantia_main.c
+index 41f3676c7f1e..3ebffac95de2 100644
+--- a/drivers/net/phy/aquantia/aquantia_main.c
++++ b/drivers/net/phy/aquantia/aquantia_main.c
+@@ -692,7 +692,9 @@ int aqr_wait_reset_complete(struct phy_device *phydev)
+ {
+ 	int ret, val;
+ 
+-	ret = read_poll_timeout(phy_read_mmd, val, val != 0,
++	ret = read_poll_timeout(phy_read_mmd, val,
++				((val & VEND1_GLOBAL_FW_ID_MASK) != 0 &&
++				 (val & VEND1_GLOBAL_FW_ID_MASK) != VEND1_GLOBAL_FW_ID_MASK),
+ 				AQR_FW_WAIT_SLEEP_US, AQR_FW_WAIT_TIMEOUT_US,
+ 				false, phydev, MDIO_MMD_VEND1,
+ 				VEND1_GLOBAL_FW_ID);
+-- 
+2.43.0
+

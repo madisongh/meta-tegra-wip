@@ -1,0 +1,42 @@
+From 06ee8948ed3951cc9797256a6a3b3d2a88cd6bfb Mon Sep 17 00:00:00 2001
+From: Jon Hunter <jonathanh@nvidia.com>
+Date: Thu, 10 Apr 2025 11:07:53 +0100
+Subject: [PATCH 86/95] NVIDIA: SAUCE: xhci: tegra: Remove unused variable
+
+The variable 'i' is no longer used in the function
+tegra_xhci_hub_control() and so remove this to fix the unused variable
+warning that is observed.
+
+http://nvbugs/4819335
+http://nvbugs/4752661
+http://nvbugs/3370448
+http://nvbugs/5181436
+
+Upstream-Status: Backport
+Signed-off-by: Jon Hunter <jonathanh@nvidia.com>
+Reviewed-by: Brad Griffis <bgriffis@nvidia.com>
+Signed-off-by: Kartik Rajput <kkartik@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 3bd1742fc85de7502904e29029b3cc91490a04f8)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/usb/host/xhci-tegra.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/drivers/usb/host/xhci-tegra.c b/drivers/usb/host/xhci-tegra.c
+index 91f6e4ccae13..34b4a822b487 100644
+--- a/drivers/usb/host/xhci-tegra.c
++++ b/drivers/usb/host/xhci-tegra.c
+@@ -2831,7 +2831,6 @@ static int tegra_xhci_hub_control(struct usb_hcd *hcd, u16 type_req, u16 value,
+ 	struct xhci_hub *rhub;
+ 	struct xhci_bus_state *bus_state;
+ 	int port = (index & 0xff) - 1;
+-	unsigned int i;
+ 	struct xhci_port **ports;
+ 	u32 portsc;
+ 	int ret;
+-- 
+2.43.0
+

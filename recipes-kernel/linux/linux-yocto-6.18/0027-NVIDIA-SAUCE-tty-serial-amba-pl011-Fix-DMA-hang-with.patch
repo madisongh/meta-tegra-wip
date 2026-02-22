@@ -1,0 +1,52 @@
+From d406735385a7d3593b2ca34944d41b1a0794f899 Mon Sep 17 00:00:00 2001
+From: Kartik <kkartik@nvidia.com>
+Date: Mon, 10 Jun 2024 17:34:31 +0000
+Subject: [PATCH 27/95] NVIDIA: SAUCE: tty/serial: amba-pl011: Fix DMA hang
+ with RTS and CTS enabled
+
+BugLink: https://bugs.launchpad.net/bugs/2080908
+
+Function pl011_throttle_rx calls function pl011_stop_rx() to disable
+RX data transfer. This also disables the RX DMA by clearing RXDMAE
+bit of DMACR register. To unthrottle RX when DMA is used, function
+pl011_unthrottle_rx() is expected to set RXDMAE bit again to
+enable RX DMA.
+
+Set RXDMAE in DMACR register while unthrottling RX if RX DMA was
+in use.
+
+http://nvbugs/4701188
+
+Upstream-Status: Backport
+Signed-off-by: Kartik <kkartik@nvidia.com>
+Tested-by: Petlozu Pravareshwar <petlozup@nvidia.com>
+Reviewed-by: Petlozu Pravareshwar <petlozup@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 57c7e62b866aa4179d73827067e710ba4558db11)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/tty/serial/amba-pl011.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/tty/serial/amba-pl011.c b/drivers/tty/serial/amba-pl011.c
+index 2b7149cde1c9..015991eafcdc 100644
+--- a/drivers/tty/serial/amba-pl011.c
++++ b/drivers/tty/serial/amba-pl011.c
+@@ -1994,6 +1994,11 @@ static void pl011_unthrottle_rx(struct uart_port *port)
+ 	} else {
+ 		if (uap->vendor->eord_interrupt)
+ 			pl011_write(NV_UART011_EORDIM, uap, REG_NV_MIM);
++
++		if (uap->using_rx_dma) {
++			uap->dmacr |= UART011_RXDMAE;
++			pl011_write(uap->dmacr, uap, REG_DMACR);
++		}
+ 	}
+ 
+ 	pl011_write(uap->im, uap, REG_IMSC);
+-- 
+2.43.0
+

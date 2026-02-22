@@ -1,0 +1,70 @@
+From 3b328c4a73c972a40b1cd51f241722f592fa09e8 Mon Sep 17 00:00:00 2001
+From: Petlozu Pravareshwar <petlozup@nvidia.com>
+Date: Wed, 28 Aug 2024 14:10:49 +0000
+Subject: [PATCH 23/95] NVIDIA: SAUCE: soc/tegra: pmc: Configure internal
+ regulators for sdmmc1-hv pad
+
+It is required to enable or disable internal regulators for sdmmc1-hv
+pad when the operational modes selected as 1.8V or 3.3V respectively.
+This is because BDSDMEM pads used for SDMMC use internal 1.8V regulator
+instead of off-chip VD18 supply.
+
+http://nvbugs/4733143
+
+Upstream-Status: Backport
+Signed-off-by: Petlozu Pravareshwar <petlozup@nvidia.com>
+Reviewed-by: Laxman Dewangan <ldewangan@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 962f7e57ace296d955e2ec0d3a6b8f36cd305258)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/soc/tegra/pmc.c | 13 +++++++++++--
+ include/soc/tegra/pmc.h |  3 +++
+ 2 files changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/soc/tegra/pmc.c b/drivers/soc/tegra/pmc.c
+index 3e22df8425ff..6fb76c072a64 100644
+--- a/drivers/soc/tegra/pmc.c
++++ b/drivers/soc/tegra/pmc.c
+@@ -1566,10 +1566,19 @@ static int tegra_io_pad_set_voltage(struct tegra_pmc *pmc, enum tegra_io_pad id,
+ 	if (pmc->soc->has_impl_33v_pwr) {
+ 		value = tegra_pmc_readl(pmc, pad->e_33v_ctl);
+ 
+-		if (voltage == TEGRA_IO_PAD_VOLTAGE_1V8)
++		if (voltage == TEGRA_IO_PAD_VOLTAGE_1V8) {
+ 			value &= ~BIT(pad->voltage);
+-		else
++			if (pad->has_int_reg) {
++				value |= BIT(pad->e_reg06);
++				value |= BIT(pad->e_reg18);
++			}
++		} else {
+ 			value |= BIT(pad->voltage);
++			if (pad->has_int_reg) {
++				value &= ~BIT(pad->e_reg06);
++				value &= ~BIT(pad->e_reg18);
++			}
++		}
+ 
+ 		tegra_pmc_writel(pmc, value, pad->e_33v_ctl);
+ 	} else {
+diff --git a/include/soc/tegra/pmc.h b/include/soc/tegra/pmc.h
+index f0f54780de35..b53067a8f4b2 100644
+--- a/include/soc/tegra/pmc.h
++++ b/include/soc/tegra/pmc.h
+@@ -157,6 +157,9 @@ struct tegra_io_pad_soc {
+ 	unsigned int dpd;
+ 	unsigned int request;
+ 	unsigned int status;
++	bool has_int_reg;
++	unsigned int e_reg06;
++	unsigned int e_reg18;
+ 	unsigned int voltage;
+ 	unsigned int e_33v_ctl;
+ 	const char *name;
+-- 
+2.43.0
+

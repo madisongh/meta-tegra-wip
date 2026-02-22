@@ -1,0 +1,51 @@
+From 0002baaafe6f0d3849475ca3584810156c074946 Mon Sep 17 00:00:00 2001
+From: Wayne Chang <waynec@nvidia.com>
+Date: Fri, 30 Aug 2024 07:04:39 +0000
+Subject: [PATCH 77/95] NVIDIA: SAUCE: usb: gadget: tegra-xudc: Reduce
+ ping.LFPS trepeat for U1 exit reliability
+
+We observed that some hosts may fail to exit U1 due to a U1 ping timeout.
+By adjusting the SSPX_CORE_CNT27_PING_LFPS_TRPT parameter to reduce
+the ping.LFPS trepeat value, the time is reduced from 300ms to 200ms and
+improve the reliability of U1 exit in these scenarios.
+
+http://nvbugs/4758552
+
+Upstream-Status: Backport
+Signed-off-by: Wayne Chang <waynec@nvidia.com>
+Reviewed-by: WK Tsai <wtsai@nvidia.com>
+Reviewed-by: HaoTien Hsu <haotienh@nvidia.com>
+Reviewed-by: Henry Lin <henryl@nvidia.com>
+Signed-off-by: Vishwaroop A <va@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 493e4cf00ee7aac67fca4ff4b11c3d66ee72b89b)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/usb/gadget/udc/tegra-xudc.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/usb/gadget/udc/tegra-xudc.c b/drivers/usb/gadget/udc/tegra-xudc.c
+index 31f99f71940c..92bb222edbde 100644
+--- a/drivers/usb/gadget/udc/tegra-xudc.c
++++ b/drivers/usb/gadget/udc/tegra-xudc.c
+@@ -3524,6 +3524,15 @@ static void tegra264_xudc_device_params_init(struct tegra_xudc *xudc)
+ 	val |= SSPX_CORE_CNT13_CRDTHP_TIMER(0x33);
+ 	xudc_writel(xudc, val, SSPX_CORE_CNT13);
+ 
++#define SSPX_CORE_CNT27 0x407c
++#define  SSPX_CORE_CNT27_PING_LFPS_TRPT_MASK GENMASK(29, 0)
++#define  SSPX_CORE_CNT27_PING_LFPS_TRPT(x) ((x) & \
++					SSPX_CORE_CNT27_PING_LFPS_TRPT_MASK)
++	val = xudc_readl(xudc, SSPX_CORE_CNT27);
++	val &= ~(SSPX_CORE_CNT27_PING_LFPS_TRPT_MASK);
++	val |= SSPX_CORE_CNT27_PING_LFPS_TRPT(0x7a1200);
++	xudc_writel(xudc, val, SSPX_CORE_CNT27);
++
+ #define SSPX_CORE_CNT30 0x4088
+ #define  SSPX_CORE_CNT30_LMPITP_TIMER_MASK GENMASK(11, 0)
+ #define  SSPX_CORE_CNT30_LMPITP_TIMER(x) ((x) & \
+-- 
+2.43.0
+

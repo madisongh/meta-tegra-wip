@@ -1,0 +1,57 @@
+From 947cb1025b1ff195bf95e1d4befd21e0cf7a98f7 Mon Sep 17 00:00:00 2001
+From: Laxman Dewangan <ldewangan@nvidia.com>
+Date: Sat, 24 Aug 2024 10:27:30 +0000
+Subject: [PATCH 62/95] NVIDIA: SAUCE: pinctrl: Remove duplication of
+ PINCTRL_TEGRA264 definition
+
+Remove the duplication of conifg definition in the Kconfigs.
+
+Add the PINCTRL_TEGRA264 in one place and select when
+CONFIG_ARCH_TEGRA_264_SOC is enabled in defconfig.
+
+Upstream-Status: Backport
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 054dc154764f05a4b81abe7bc60360d4f401f050)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/pinctrl/Kconfig   | 7 -------
+ drivers/soc/tegra/Kconfig | 1 +
+ 2 files changed, 1 insertion(+), 7 deletions(-)
+
+diff --git a/drivers/pinctrl/Kconfig b/drivers/pinctrl/Kconfig
+index e29cbe407c47..4f8507ebbdac 100644
+--- a/drivers/pinctrl/Kconfig
++++ b/drivers/pinctrl/Kconfig
+@@ -31,13 +31,6 @@ config DEBUG_PINCTRL
+ 	help
+ 	  Say Y here to add some extra checks and diagnostics to PINCTRL calls.
+ 
+-config PINCTRL_TEGRA264
+-	bool "NVIDIA Tegra264 Pinmux support"
+-	select PINCTRL_TEGRA
+-	default y
+-	help
+-	Support for the NVIDIA Tegra264 PINCTRL controller driver.
+-
+ config PINCTRL_AMD
+ 	bool "AMD GPIO pin control"
+ 	depends on HAS_IOMEM
+diff --git a/drivers/soc/tegra/Kconfig b/drivers/soc/tegra/Kconfig
+index c0fc54c3cd35..602cdd8f5fe3 100644
+--- a/drivers/soc/tegra/Kconfig
++++ b/drivers/soc/tegra/Kconfig
+@@ -135,6 +135,7 @@ config ARCH_TEGRA_264_SOC
+ 	depends on !CPU_BIG_ENDIAN
+ 	select MAILBOX
+ 	select SOC_TEGRA_PMC
++	select PINCTRL_TEGRA264
+ 	help
+ 	  Enable support for the NVIDIA Tegra264 SoC.
+ 
+-- 
+2.43.0
+

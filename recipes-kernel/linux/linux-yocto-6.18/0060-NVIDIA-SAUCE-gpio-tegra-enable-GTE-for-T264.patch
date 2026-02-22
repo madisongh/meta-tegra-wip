@@ -1,0 +1,34 @@
+From 9e4f8a8a4023a75c430105bc8da78c04c31c5d35 Mon Sep 17 00:00:00 2001
+From: Gautham Srinivasan <gauthams@nvidia.com>
+Date: Wed, 17 Jul 2024 10:22:32 +0000
+Subject: [PATCH 60/95] NVIDIA: SAUCE: gpio-tegra: enable GTE for T264
+
+Set has_gte flag to enable GTE for T264 AON pins.
+
+Upstream-Status: Backport
+Signed-off-by: Gautham Srinivasan <gauthams@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 742e7ad3b148fb4e799ec3f962d3db50e3d4ac42)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/gpio/gpio-tegra186.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/gpio/gpio-tegra186.c b/drivers/gpio/gpio-tegra186.c
+index 5b528756768e..48eaf304c6c7 100644
+--- a/drivers/gpio/gpio-tegra186.c
++++ b/drivers/gpio/gpio-tegra186.c
+@@ -1384,6 +1384,7 @@ static const struct tegra_gpio_soc tegra264_aon_soc = {
+ 	.instance = 1,
+ 	.num_irqs_per_bank = 8,
+ 	.has_vm_support = true,
++	.has_gte = true,
+ };
+ 
+ #define TEGRA256_MAIN_GPIO_PORT(_name, _bank, _port, _pins)	\
+-- 
+2.43.0
+

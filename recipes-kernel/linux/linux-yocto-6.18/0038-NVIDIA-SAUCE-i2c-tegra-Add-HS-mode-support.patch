@@ -1,0 +1,96 @@
+From c9867fc10aec46bcf96162b208009ca91129e4a8 Mon Sep 17 00:00:00 2001
+From: Akhil R <akhilrajeev@nvidia.com>
+Date: Fri, 30 Aug 2024 15:12:07 +0530
+Subject: [PATCH 38/95] NVIDIA: SAUCE: i2c: tegra: Add HS mode support
+
+Add support to run HS mode transfers in the supported hardware.
+
+http://nvbugs/4790447
+
+Upstream-Status: Backport
+Signed-off-by: Akhil R <akhilrajeev@nvidia.com>
+Reviewed-by: Petlozu Pravareshwar <petlozup@nvidia.com>
+Tested-by: Petlozu Pravareshwar <petlozup@nvidia.com>
+Reviewed-by: Laxman Dewangan <ldewangan@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit b147c20435392c93eedfbcf0f9ac75314d8152e2)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/i2c/busses/i2c-tegra.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/drivers/i2c/busses/i2c-tegra.c b/drivers/i2c/busses/i2c-tegra.c
+index 52a424089a27..447f72c80151 100644
+--- a/drivers/i2c/busses/i2c-tegra.c
++++ b/drivers/i2c/busses/i2c-tegra.c
+@@ -96,6 +96,7 @@
+ #define I2C_HEADER_IE_ENABLE			BIT(17)
+ #define I2C_HEADER_REPEAT_START			BIT(16)
+ #define I2C_HEADER_CONTINUE_XFER		BIT(15)
++#define I2C_HEADER_HS_MODE			BIT(22)
+ #define I2C_HEADER_SLAVE_ADDR_SHIFT		1
+ 
+ #define I2C_BUS_CLEAR_CNFG			0x084
+@@ -255,10 +256,13 @@ struct tegra_i2c_hw_feature {
+ 	u32 thigh_std_mode;
+ 	u32 tlow_fast_fastplus_mode;
+ 	u32 thigh_fast_fastplus_mode;
++	u32 tlow_hs_mode;
++	u32 thigh_hs_mode;
+ 	u32 setup_hold_time_std_mode;
+ 	u32 setup_hold_time_fast_fast_plus_mode;
+ 	u32 setup_hold_time_hs_mode;
+ 	bool has_interface_timing_reg;
++	bool has_hs_mode_support;
+ };
+ 
+ /**
+@@ -725,6 +729,18 @@ static void tegra_i2c_set_clk_params(struct tegra_i2c_dev *i2c_dev)
+ 	 */
+ 	if (i2c_dev->hw->has_interface_timing_reg && tsu_thd)
+ 		i2c_writel(i2c_dev, tsu_thd, I2C_INTERFACE_TIMING_1);
++
++	/* Write HS mode registers. These will get used only for HS mode*/
++	if (i2c_dev->hw->has_hs_mode_support) {
++		tlow = i2c_dev->hw->tlow_hs_mode;
++		thigh = i2c_dev->hw->thigh_hs_mode;
++		tsu_thd = i2c_dev->hw->setup_hold_time_hs_mode;
++
++		val = FIELD_PREP(I2C_HS_INTERFACE_TIMING_THIGH, thigh) |
++			FIELD_PREP(I2C_HS_INTERFACE_TIMING_TLOW, tlow);
++		i2c_writel(i2c_dev, val, I2C_HS_INTERFACE_TIMING_0);
++		i2c_writel(i2c_dev, tsu_thd, I2C_HS_INTERFACE_TIMING_1);
++	}
+ }
+ 
+ static int tegra_i2c_set_div_clk(struct tegra_i2c_dev *i2c_dev)
+@@ -1288,6 +1304,9 @@ static void tegra_i2c_push_packet_header(struct tegra_i2c_dev *i2c_dev,
+ 	if (msg->flags & I2C_M_RD)
+ 		packet_header |= I2C_HEADER_READ;
+ 
++	if (i2c_dev->timings.bus_freq_hz > I2C_MAX_FAST_MODE_PLUS_FREQ)
++		packet_header |= I2C_HEADER_HS_MODE;
++
+ 	if (i2c_dev->dma_mode && !i2c_dev->msg_read)
+ 		*dma_buf++ = packet_header;
+ 	else
+@@ -1731,10 +1750,13 @@ static const struct tegra_i2c_hw_feature tegra194_i2c_hw = {
+ 	.thigh_std_mode = 0x7,
+ 	.tlow_fast_fastplus_mode = 0x2,
+ 	.thigh_fast_fastplus_mode = 0x2,
++	.tlow_hs_mode = 0x8,
++	.thigh_hs_mode = 0x3,
+ 	.setup_hold_time_std_mode = 0x08080808,
+ 	.setup_hold_time_fast_fast_plus_mode = 0x02020202,
+ 	.setup_hold_time_hs_mode = 0x090909,
+ 	.has_interface_timing_reg = true,
++	.has_hs_mode_support = true,
+ };
+ 
+ static const struct tegra_i2c_hw_feature tegra256_i2c_hw = {
+-- 
+2.43.0
+

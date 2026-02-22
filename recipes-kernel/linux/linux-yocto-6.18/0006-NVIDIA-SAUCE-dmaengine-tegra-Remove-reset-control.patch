@@ -1,0 +1,80 @@
+From b9472926ae4b01e21e8cd483a76d8d5b5f3c8d09 Mon Sep 17 00:00:00 2001
+From: Akhil R <akhilrajeev@nvidia.com>
+Date: Wed, 16 Aug 2023 09:44:52 +0530
+Subject: [PATCH 06/95] NVIDIA: SAUCE: dmaengine: tegra: Remove reset control
+
+The reset is expected to be controlled from the bootloader and should
+be done by the time it reaches kernel. Therefore a reset in the
+driver is redundant.
+
+Also, Linux does not have access to this reset in the upcoming chips.
+To keep the drive agnostic, removing all the reset functionality from
+the driver.
+
+Upstream-Status: Backport
+Signed-off-by: Akhil R <akhilrajeev@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 06eb84fe4abbe4853db929ffd2b43d9f0cac2550)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/dma/tegra186-gpc-dma.c | 13 +------------
+ 1 file changed, 1 insertion(+), 12 deletions(-)
+
+diff --git a/drivers/dma/tegra186-gpc-dma.c b/drivers/dma/tegra186-gpc-dma.c
+index 2edce19f8e59..f98e19b3fe36 100644
+--- a/drivers/dma/tegra186-gpc-dma.c
++++ b/drivers/dma/tegra186-gpc-dma.c
+@@ -2,7 +2,7 @@
+ /*
+  * DMA driver for NVIDIA Tegra GPC DMA controller.
+  *
+- * Copyright (c) 2014-2022, NVIDIA CORPORATION.  All rights reserved.
++ * Copyright (c) 2014-2023, NVIDIA CORPORATION.  All rights reserved.
+  */
+ 
+ #include <linux/bitfield.h>
+@@ -16,7 +16,6 @@
+ #include <linux/of.h>
+ #include <linux/of_dma.h>
+ #include <linux/platform_device.h>
+-#include <linux/reset.h>
+ #include <linux/slab.h>
+ #include <dt-bindings/memory/tegra186-mc.h>
+ #include "virt-dma.h"
+@@ -247,7 +246,6 @@ struct tegra_dma {
+ 	void __iomem *base_addr;
+ 	struct device *dev;
+ 	struct dma_device dma_dev;
+-	struct reset_control *rst;
+ 	const struct tegra_dma_chip_data *chip_data;
+ 	struct tegra_dma_channel channels[];
+ };
+@@ -1487,13 +1485,6 @@ static int tegra_dma_probe(struct platform_device *pdev)
+ 	if (IS_ERR(tdma->base_addr))
+ 		return PTR_ERR(tdma->base_addr);
+ 
+-	tdma->rst = devm_reset_control_get_exclusive(&pdev->dev, "gpcdma");
+-	if (IS_ERR(tdma->rst)) {
+-		return dev_err_probe(&pdev->dev, PTR_ERR(tdma->rst),
+-			      "Missing controller reset\n");
+-	}
+-	reset_control_reset(tdma->rst);
+-
+ 	tdma->dma_dev.dev = &pdev->dev;
+ 
+ 	if (!tegra_dev_iommu_get_stream_id(&pdev->dev, &stream_id)) {
+@@ -1623,8 +1614,6 @@ static int __maybe_unused tegra_dma_pm_resume(struct device *dev)
+ 	struct tegra_dma *tdma = dev_get_drvdata(dev);
+ 	unsigned int i;
+ 
+-	reset_control_reset(tdma->rst);
+-
+ 	for (i = 0; i < tdma->chip_data->nr_channels; i++) {
+ 		struct tegra_dma_channel *tdc = &tdma->channels[i];
+ 
+-- 
+2.43.0
+

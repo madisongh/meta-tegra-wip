@@ -1,0 +1,43 @@
+From 6d228efd2ae811605d1845391013e35f9ea1faa6 Mon Sep 17 00:00:00 2001
+From: Wayne Chang <waynec@nvidia.com>
+Date: Thu, 14 Nov 2024 03:11:36 +0000
+Subject: [PATCH 76/95] NVIDIA: SAUCE: soc/tegra: fuse: Add FUSE_USB_CALIB_EXT2
+ and FUSE_USB_CALIB_EXT3
+
+Add FUSE_USB_CALIB_EXT2 and FUSE_USB_CALIB_EXT3 which are used for USB
+calibration.
+
+http://nvbugs/4933929
+
+Upstream-Status: Backport
+Signed-off-by: Wayne Chang <waynec@nvidia.com>
+Reviewed-by: Henry Lin <henryl@nvidia.com>
+Reviewed-by: Sing-Han Chen <singhanc@nvidia.com>
+Reviewed-by: WK Tsai <wtsai@nvidia.com>
+Reviewed-by: HaoTien Hsu <haotienh@nvidia.com>
+Signed-off-by: Vishwaroop A <va@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit d3157ee1dc0c336701c5f9cf7c9a499041890b50)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ include/soc/tegra/fuse.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/include/soc/tegra/fuse.h b/include/soc/tegra/fuse.h
+index 8f421b9f7585..5a112763457a 100644
+--- a/include/soc/tegra/fuse.h
++++ b/include/soc/tegra/fuse.h
+@@ -23,6 +23,8 @@
+ #define TEGRA_FUSE_SKU_CALIB_0	0xf0
+ #define TEGRA30_FUSE_SATA_CALIB	0x124
+ #define TEGRA_FUSE_USB_CALIB_EXT_0 0x250
++#define TEGRA_FUSE_USB_CALIB_EXT2_0 0x2ec
++#define TEGRA_FUSE_USB_CALIB_EXT3_0 0x3bc
+ 
+ #ifndef __ASSEMBLY__
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,50 @@
+From be297966f328adf6594cd77c9ee0a61c2127e26a Mon Sep 17 00:00:00 2001
+From: Wayne Chang <waynec@nvidia.com>
+Date: Tue, 3 Sep 2024 08:38:53 +0000
+Subject: [PATCH 73/95] NVIDIA: SAUCE: usb: gadget: tegra-xudc: Increase credit
+ HP timeout margin
+
+Increased the CREDIT_HP_TIMER timeout value to 0x33 from the previous 0x32.
+This adjustment enlarges the timeout margin and ensures that the PUT does
+not enter recovery prematurely.
+
+http://nvbugs/4779599
+
+Upstream-Status: Backport
+Signed-off-by: Wayne Chang <waynec@nvidia.com>
+Reviewed-by: HaoTien Hsu <haotienh@nvidia.com>
+Reviewed-by: Henry Lin <henryl@nvidia.com>
+Reviewed-by: WK Tsai <wtsai@nvidia.com>
+Signed-off-by: Vishwaroop A <va@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 32f8cbb80298c04d4b0c99a398378ca83ea5cd8f)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/usb/gadget/udc/tegra-xudc.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/usb/gadget/udc/tegra-xudc.c b/drivers/usb/gadget/udc/tegra-xudc.c
+index fc5579052b29..92608555c000 100644
+--- a/drivers/usb/gadget/udc/tegra-xudc.c
++++ b/drivers/usb/gadget/udc/tegra-xudc.c
+@@ -3512,6 +3512,15 @@ static void tegra264_xudc_device_params_init(struct tegra_xudc *xudc)
+ 	val = xudc_readl(xudc, BLCG) & ~BLCG_COREPLL_PWRDN;
+ 	xudc_writel(xudc, val, BLCG);
+ 
++#define SSPX_CORE_CNT13 0x4044
++#define  SSPX_CORE_CNT13_CRDTHP_TIMER_MASK GENMASK(11, 0)
++#define  SSPX_CORE_CNT13_CRDTHP_TIMER(x) ((x) & \
++					SSPX_CORE_CNT13_CRDTHP_TIMER_MASK)
++	val = xudc_readl(xudc, SSPX_CORE_CNT13);
++	val &= ~(SSPX_CORE_CNT13_CRDTHP_TIMER_MASK);
++	val |= SSPX_CORE_CNT13_CRDTHP_TIMER(0x33);
++	xudc_writel(xudc, val, SSPX_CORE_CNT13);
++
+ #define SSPX_CORE_CNT32 0x4090
+ 	/*
+ 	 * Compliance suite appears to be violating polling
+-- 
+2.43.0
+

@@ -1,0 +1,46 @@
+From d3aaafff4c5cb040bf719f6c31b72f9279dfef03 Mon Sep 17 00:00:00 2001
+From: Pohsun Su <pohsuns@nvidia.com>
+Date: Wed, 21 Feb 2024 16:54:34 +0800
+Subject: [PATCH 88/95] NVIDIA: SAUCE: clocksource: timer-tegra186: adjust WDT
+ timing
+
+This change disables WDT later on suspend and enables WDT earlier on
+resume. By extending the coverage of WDT, system crashes caused by
+drivers in their suspend()/suspend_late() and resume_early()/resume()
+callbacks leads to a power-on reset instead of hanging forever.
+
+Bug 5391604
+
+Upstream-Status: Backport
+Change-Id: I9b7c3bd626c80ab8f581b7bd1e58a4f3b85e8266
+Signed-off-by: Pohsun Su <pohsuns@nvidia.com>
+Signed-off-by: Kartik Rajput <kkartik@nvidia.com>
+Reviewed-on: https://git-master.nvidia.com/r/c/3rdparty/canonical/linux-noble/+/3419906
+Reviewed-by: Jon Hunter <jonathanh@nvidia.com>
+Reviewed-by: Brad Griffis <bgriffis@nvidia.com>
+GVS: buildbot_gerritrpt <buildbot_gerritrpt@nvidia.com>
+(cherry picked from commit e835e048ab29ec916ea911bb5ba32caf54c84c29)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/clocksource/timer-tegra186.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/clocksource/timer-tegra186.c b/drivers/clocksource/timer-tegra186.c
+index 355558893e5f..966266b601d9 100644
+--- a/drivers/clocksource/timer-tegra186.c
++++ b/drivers/clocksource/timer-tegra186.c
+@@ -505,8 +505,9 @@ static int __maybe_unused tegra186_timer_resume(struct device *dev)
+ 	return 0;
+ }
+ 
+-static SIMPLE_DEV_PM_OPS(tegra186_timer_pm_ops, tegra186_timer_suspend,
+-			 tegra186_timer_resume);
++static const struct dev_pm_ops tegra186_timer_pm_ops = {
++	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(tegra186_timer_suspend, tegra186_timer_resume)
++};
+ 
+ static const struct tegra186_timer_soc tegra186_timer = {
+ 	.num_timers = 10,
+-- 
+2.43.0
+

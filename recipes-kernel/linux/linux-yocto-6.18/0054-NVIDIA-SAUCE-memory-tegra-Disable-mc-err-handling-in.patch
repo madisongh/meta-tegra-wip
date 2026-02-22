@@ -1,0 +1,86 @@
+From 5cba6fd1321b17f1cd72cc07ec60eff1cb3e6b52 Mon Sep 17 00:00:00 2001
+From: Ketan Patil <ketanp@nvidia.com>
+Date: Thu, 13 Jun 2024 10:10:22 +0000
+Subject: [PATCH 54/95] NVIDIA: SAUCE: memory: tegra: Disable mc-err handling
+ in upstream
+
+In t264, the mc-err handling flow is pretty different than t234 and
+older chips. The new flow has been added in downstream mc-err driver for
+t264. Hence it is needed to use downstream irq handler code for t264 mc-
+err. Do not specify irq handler for t264 in upstream mc driver, so that
+it can use the downstream mc-err handling code.
+Later on, we need to move downstream mc-err code into upstream mc
+driver and upstream it.
+
+http://nvbugs/4345191
+
+Upstream-Status: Backport
+Signed-off-by: Ketan Patil <ketanp@nvidia.com>
+Signed-off-by: Bodla Rakesh Babu <rbodla@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 3bea3295736a01047bfc09804cfae0b57ade6598)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/memory/tegra/mc.h       | 7 +++++--
+ drivers/memory/tegra/tegra186.c | 7 +++++++
+ drivers/memory/tegra/tegra264.c | 2 +-
+ 3 files changed, 13 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/memory/tegra/mc.h b/drivers/memory/tegra/mc.h
+index 1d97cf4d3a94..a0dea0601a41 100644
+--- a/drivers/memory/tegra/mc.h
++++ b/drivers/memory/tegra/mc.h
+@@ -197,11 +197,14 @@ extern const struct tegra_mc_ops tegra30_mc_ops;
+ 
+ #if defined(CONFIG_ARCH_TEGRA_186_SOC) || \
+     defined(CONFIG_ARCH_TEGRA_194_SOC) || \
+-    defined(CONFIG_ARCH_TEGRA_234_SOC) || \
+-    defined(CONFIG_ARCH_TEGRA_264_SOC)
++    defined(CONFIG_ARCH_TEGRA_234_SOC)
+ extern const struct tegra_mc_ops tegra186_mc_ops;
+ #endif
+ 
++#if defined(CONFIG_ARCH_TEGRA_264_SOC)
++extern const struct tegra_mc_ops tegra264_mc_ops;
++#endif
++
+ irqreturn_t tegra30_mc_handle_irq(int irq, void *data);
+ extern const char * const tegra_mc_status_names[32];
+ extern const char * const tegra_mc_error_names[8];
+diff --git a/drivers/memory/tegra/tegra186.c b/drivers/memory/tegra/tegra186.c
+index aee11457bf8e..1e012b7198fa 100644
+--- a/drivers/memory/tegra/tegra186.c
++++ b/drivers/memory/tegra/tegra186.c
+@@ -177,6 +177,13 @@ const struct tegra_mc_ops tegra186_mc_ops = {
+ 	.handle_irq = tegra30_mc_handle_irq,
+ };
+ 
++const struct tegra_mc_ops tegra264_mc_ops = {
++	.probe = tegra186_mc_probe,
++	.remove = tegra186_mc_remove,
++	.probe_device = tegra186_mc_probe_device,
++	.resume = tegra186_mc_resume,
++};
++
+ #if defined(CONFIG_ARCH_TEGRA_186_SOC)
+ static const struct tegra_mc_client tegra186_mc_clients[] = {
+ 	{
+diff --git a/drivers/memory/tegra/tegra264.c b/drivers/memory/tegra/tegra264.c
+index 2c846c58244f..5f1dc958f642 100644
+--- a/drivers/memory/tegra/tegra264.c
++++ b/drivers/memory/tegra/tegra264.c
+@@ -307,7 +307,7 @@ const struct tegra_mc_soc tegra264_mc_soc = {
+ 		   MC_INT_SECERR_SEC | MC_INT_DECERR_VPR |
+ 		   MC_INT_SECURITY_VIOLATION | MC_INT_DECERR_EMEM,
+ 	.has_addr_hi_reg = true,
+-	.ops = &tegra186_mc_ops,
++	.ops = &tegra264_mc_ops,
+ 	.icc_ops = &tegra264_mc_icc_ops,
+ 	.ch_intmask = 0x0000ff00,
+ 	.global_intstatus_channel_shift = 8,
+-- 
+2.43.0
+

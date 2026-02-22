@@ -1,0 +1,48 @@
+From 2e97fab8023ae5e95b17b93575458d178f3a0c26 Mon Sep 17 00:00:00 2001
+From: Manish Bhardwaj <mbhardwaj@nvidia.com>
+Date: Sat, 15 Jun 2024 19:58:46 +0000
+Subject: [PATCH 02/95] NVIDIA: SAUCE: gpcdma: fix crash in gpcdma driver
+
+BugLink: https://bugs.launchpad.net/bugs/2080908
+
+since we are using the dedicated channel for IPs
+using gpcdma channel, check wether that channel
+is enabled or not before assigning it.
+
+https://jirasw.nvidia.com/browse/ESLC-7980
+
+Upstream-Status: Backport
+Signed-off-by: Manish Bhardwaj <mbhardwaj@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 996d6b0b6f096b524dd0b683ce8adde2850b172c)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/dma/tegra186-gpc-dma.c | 8 ++------
+ 1 file changed, 2 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/dma/tegra186-gpc-dma.c b/drivers/dma/tegra186-gpc-dma.c
+index b1e02848d968..b63dd0322050 100644
+--- a/drivers/dma/tegra186-gpc-dma.c
++++ b/drivers/dma/tegra186-gpc-dma.c
+@@ -1311,13 +1311,9 @@ static struct dma_chan *tegra_dma_get_slave_channel(struct tegra_dma *tdma,
+ 
+ 
+ 	chan_id = dma_spec->args[1];
+-	if (chan_id > hweight_long(tdma->chan_mask))
++	if (!(tdma->chan_mask & (1 << (chan_id)))) {
+ 		return NULL;
+-
+-	/* Adjust the chan_id as channel id from
+-	 * DT is starting from an offset
+-	 */
+-	chan_id += (ffs(tdma->chan_mask) - 1);
++	}
+ 
+ 	chan = dma_get_slave_channel(&tdma->channels[chan_id].vc.chan);
+ 	if (!chan)
+-- 
+2.43.0
+

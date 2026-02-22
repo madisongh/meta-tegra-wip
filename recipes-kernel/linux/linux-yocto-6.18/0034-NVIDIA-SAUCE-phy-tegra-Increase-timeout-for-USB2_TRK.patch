@@ -1,0 +1,46 @@
+From f0901514d3f3d5d471866b6220ad794f95de297e Mon Sep 17 00:00:00 2001
+From: Wayne Chang <waynec@nvidia.com>
+Date: Tue, 13 Aug 2024 02:40:11 +0000
+Subject: [PATCH 34/95] NVIDIA: SAUCE: phy: tegra: Increase timeout for
+ USB2_TRK_COMPLETED polling
+
+BugLink: https://bugs.launchpad.net/bugs/2080908
+
+The timeout for polling on USB2_TRK_COMPLETED in the UTMI bias pad
+power-on sequence has been increased from 100 to 200 cycles.
+
+This change is necessary due to the increased number of cycles required
+to settle all biases in the new circuits. Additionally, the clock speed
+of the tracking circuit has been reduced to 1 MHz, further contributing
+to the need for a longer timeout.
+
+http://nvbugs/4796326
+
+Upstream-Status: Backport
+Signed-off-by: Wayne Chang <waynec@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 20371e8be75413e29c2d8b53066bc7ce73dc4595)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/phy/tegra/xusb-tegra186.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/phy/tegra/xusb-tegra186.c b/drivers/phy/tegra/xusb-tegra186.c
+index 52a7932c45c5..73210822f20c 100644
+--- a/drivers/phy/tegra/xusb-tegra186.c
++++ b/drivers/phy/tegra/xusb-tegra186.c
+@@ -657,7 +657,7 @@ static void tegra186_utmi_bias_pad_power_on(struct tegra_xusb_padctl *padctl)
+ 
+ 	if (padctl->soc->poll_trk_completed) {
+ 		err = padctl_readl_poll(padctl, XUSB_PADCTL_USB2_BIAS_PAD_CTL1,
+-					USB2_TRK_COMPLETED, USB2_TRK_COMPLETED, 100);
++					USB2_TRK_COMPLETED, USB2_TRK_COMPLETED, 200);
+ 		if (err) {
+ 			/* The failure with polling on trk complete will not
+ 			 * cause the failure of powering on the bias pad.
+-- 
+2.43.0
+

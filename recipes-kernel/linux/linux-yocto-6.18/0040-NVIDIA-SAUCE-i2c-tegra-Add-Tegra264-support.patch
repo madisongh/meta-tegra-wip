@@ -1,0 +1,73 @@
+From 75b74bf6bb08ba2040bc7893199a895bef68904e Mon Sep 17 00:00:00 2001
+From: Akhil R <akhilrajeev@nvidia.com>
+Date: Mon, 31 Jul 2023 13:51:50 +0530
+Subject: [PATCH 40/95] NVIDIA: SAUCE: i2c: tegra: Add Tegra264 support
+
+Add device tree compatible and hardware data needed to support Tegra264.
+
+Upstream-Status: Backport
+Signed-off-by: Akhil R <akhilrajeev@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit a1168a8348815b36f22469498ed7d4d8274de391)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/i2c/busses/i2c-tegra.c | 31 ++++++++++++++++++++++++++++++-
+ 1 file changed, 30 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/i2c/busses/i2c-tegra.c b/drivers/i2c/busses/i2c-tegra.c
+index d80ab40cfd02..d2e5788f92a6 100644
+--- a/drivers/i2c/busses/i2c-tegra.c
++++ b/drivers/i2c/busses/i2c-tegra.c
+@@ -600,7 +600,7 @@ static int tegra_i2c_init_dma(struct tegra_i2c_dev *i2c_dev)
+ 	u32 *dma_buf;
+ 	int err;
+ 
+-	if (IS_VI(i2c_dev))
++	if (IS_VI(i2c_dev) || !of_property_present(i2c_dev->dev->of_node, "dmas"))
+ 		return 0;
+ 
+ 	if (i2c_dev->hw->has_apb_dma) {
+@@ -1892,8 +1892,37 @@ static const struct tegra_i2c_hw_feature tegra256_i2c_hw = {
+ 	.has_interface_timing_reg = true,
+ };
+ 
++static const struct tegra_i2c_hw_feature tegra264_i2c_hw = {
++	.has_continue_xfer_support = true,
++	.has_per_pkt_xfer_complete_irq = true,
++	.clk_divisor_hs_mode = 1,
++	.clk_divisor_std_mode = 0x1d,
++	.clk_divisor_fast_mode = 0x15,
++	.clk_divisor_fast_plus_mode = 0x8,
++	.has_config_load_reg = true,
++	.has_multi_master_mode = true,
++	.has_slcg_override_reg = true,
++	.has_mst_fifo = true,
++	.quirks = &tegra194_i2c_quirks,
++	.supports_bus_clear = true,
++	.has_apb_dma = false,
++	.tlow_std_mode = 0x8,
++	.thigh_std_mode = 0x7,
++	.tlow_fast_fastplus_mode = 0x2,
++	.thigh_fast_fastplus_mode = 0x2,
++	.tlow_hs_mode = 0x4,
++	.thigh_hs_mode = 0x2,
++	.setup_hold_time_std_mode = 0x08080808,
++	.setup_hold_time_fast_fast_plus_mode = 0x02020202,
++	.setup_hold_time_hs_mode = 0x090909,
++	.has_interface_timing_reg = true,
++	.has_hs_mode_support = true,
++	.has_mutex = true,
++};
++
+ static const struct of_device_id tegra_i2c_of_match[] = {
+ 	{ .compatible = "nvidia,tegra256-i2c", .data = &tegra256_i2c_hw, },
++	{ .compatible = "nvidia,tegra264-i2c", .data = &tegra264_i2c_hw, },
+ 	{ .compatible = "nvidia,tegra194-i2c", .data = &tegra194_i2c_hw, },
+ 	{ .compatible = "nvidia,tegra186-i2c", .data = &tegra186_i2c_hw, },
+ #if IS_ENABLED(CONFIG_ARCH_TEGRA_210_SOC)
+-- 
+2.43.0
+

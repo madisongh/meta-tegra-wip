@@ -1,0 +1,59 @@
+From 730c4c369f52c90e30d4f43175d23bff991566e5 Mon Sep 17 00:00:00 2001
+From: haotienh <haotienh@nvidia.com>
+Date: Thu, 13 Feb 2025 03:21:48 +0000
+Subject: [PATCH 82/95] NVIDIA: SAUCE: soc/tegra: pmc: Add Tegra264 USB wake
+ event
+
+Add wake events for USB.
+
+http://nvbugs/4804339
+
+Upstream-Status: Backport [also backfilled missing events]
+Signed-off-by: haotienh <haotienh@nvidia.com>
+Reviewed-by: WK Tsai <wtsai@nvidia.com>
+Reviewed-by: EJ Hsu <ejh@nvidia.com>
+Reviewed-by: Wayne Chang <waynec@nvidia.com>
+Reviewed-by: Henry Lin <henryl@nvidia.com>
+Signed-off-by: Vishwaroop A <va@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 93825d90da2191e8e9c43e3327f7f3b32df6fa7c)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/soc/tegra/pmc.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/soc/tegra/pmc.c b/drivers/soc/tegra/pmc.c
+index 6fb76c072a64..6288d0954b1b 100644
+--- a/drivers/soc/tegra/pmc.c
++++ b/drivers/soc/tegra/pmc.c
+@@ -59,6 +59,7 @@
+ #include <dt-bindings/gpio/tegra186-gpio.h>
+ #include <dt-bindings/gpio/tegra194-gpio.h>
+ #include <dt-bindings/gpio/tegra234-gpio.h>
++#include <dt-bindings/gpio/tegra264-gpio.h>
+ #include <dt-bindings/soc/tegra-pmc.h>
+ 
+ #define PMC_CNTRL			0x0
+@@ -4261,6 +4262,17 @@ static const char * const tegra264_reset_sources[] = {
+ };
+ 
+ static const struct tegra_wake_event tegra264_wake_events[] = {
++	TEGRA_WAKE_IRQ("pmu", 0, 727),
++	TEGRA_WAKE_IRQ("rtc", 65, 548),
++	TEGRA_WAKE_IRQ("usb3_port_0", 79, 965),
++	TEGRA_WAKE_IRQ("usb3_port_1", 80, 965),
++	TEGRA_WAKE_IRQ("usb3_port_2", 81, 965),
++	TEGRA_WAKE_IRQ("usb3_port_3", 82, 965),
++	TEGRA_WAKE_IRQ("usb2_port_0", 83, 965),
++	TEGRA_WAKE_IRQ("usb2_port_1", 84, 965),
++	TEGRA_WAKE_IRQ("usb2_port_2", 85, 965),
++	TEGRA_WAKE_IRQ("usb2_port_3", 86, 965),
++	TEGRA_WAKE_GPIO("power_btn", 5, 1, TEGRA264_AON_GPIO(AA, 5)),
+ };
+ 
+ static const struct tegra_pmc_soc tegra264_pmc_soc = {
+-- 
+2.43.0
+

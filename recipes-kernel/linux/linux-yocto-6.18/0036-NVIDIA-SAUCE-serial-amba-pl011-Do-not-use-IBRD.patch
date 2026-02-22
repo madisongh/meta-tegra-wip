@@ -1,0 +1,110 @@
+From 674c91ccd544d1e674b272089e938c57043c1c09 Mon Sep 17 00:00:00 2001
+From: Kartik Rajput <kkartik@nvidia.com>
+Date: Thu, 28 Aug 2025 07:13:26 +0000
+Subject: [PATCH 36/95] NVIDIA: SAUCE: serial: amba-pl011: Do not use IBRD
+
+Tegra UART controllers does not support FBRD register, which cause it to
+not support various standard baudrates that HW supports.
+
+Use clk_set_rate to program UART clock rate instead.
+
+Bug 5406304
+
+Upstream-Status: Backport
+Change-Id: I6fcf14b0186e54a6f418287791d80e12d17600a0
+Signed-off-by: Kartik Rajput <kkartik@nvidia.com>
+Reviewed-on: https://git-master.nvidia.com/r/c/3rdparty/canonical/linux-noble/+/3441884
+Reviewed-by: Laxman Dewangan <ldewangan@nvidia.com>
+(cherry picked from commit daa72589899560fb3570b165163bd8e35cf704e1)
+Reviewed-on: https://git-master.nvidia.com/r/c/3rdparty/canonical/linux-noble/+/3445145
+GVS: buildbot_gerritrpt <buildbot_gerritrpt@nvidia.com>
+(cherry picked from commit 094a99a56d702c96376253072856a376fd1197e9)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/tty/serial/amba-pl011.c | 55 +++++++++++++++++++--------------
+ 1 file changed, 31 insertions(+), 24 deletions(-)
+
+diff --git a/drivers/tty/serial/amba-pl011.c b/drivers/tty/serial/amba-pl011.c
+index 015991eafcdc..887e66f109c6 100644
+--- a/drivers/tty/serial/amba-pl011.c
++++ b/drivers/tty/serial/amba-pl011.c
+@@ -2224,11 +2224,15 @@ pl011_set_termios(struct uart_port *port, struct ktermios *termios,
+ 	else
+ 		clkdiv = 16;
+ 
+-	/*
+-	 * Ask the core to calculate the divisor for us.
+-	 */
+-	baud = uart_get_baud_rate(port, termios, old, 0,
+-				  port->uartclk / clkdiv);
++	if (uap->vendor->enable_car) {
++		baud = tty_termios_baud_rate(termios);
++		clk_set_rate(uap->clk, baud * clkdiv);
++	}
++	else {
++		baud = uart_get_baud_rate(port, termios, old, 0,
++					  port->uartclk / clkdiv);
++	}
++
+ #ifdef CONFIG_DMA_ENGINE
+ 	/*
+ 	 * Adjust RX DMA polling rate with baud rate if not specified.
+@@ -2237,10 +2241,12 @@ pl011_set_termios(struct uart_port *port, struct ktermios *termios,
+ 		uap->dmarx.poll_rate = DIV_ROUND_UP(10000000, baud);
+ #endif
+ 
+-	if (baud > port->uartclk / 16)
+-		quot = DIV_ROUND_CLOSEST(port->uartclk * 8, baud);
+-	else
+-		quot = DIV_ROUND_CLOSEST(port->uartclk * 4, baud);
++	if (!uap->vendor->enable_car) {
++		if (baud > port->uartclk / 16)
++			quot = DIV_ROUND_CLOSEST(port->uartclk * 8, baud);
++		else
++			quot = DIV_ROUND_CLOSEST(port->uartclk * 4, baud);
++	}
+ 
+ 	switch (termios->c_cflag & CSIZE) {
+ 	case CS5:
+@@ -2312,22 +2318,23 @@ pl011_set_termios(struct uart_port *port, struct ktermios *termios,
+ 			old_cr &= ~ST_UART011_CR_OVSFACT;
+ 	}
+ 
+-	/*
+-	 * Workaround for the ST Micro oversampling variants to
+-	 * increase the bitrate slightly, by lowering the divisor,
+-	 * to avoid delayed sampling of start bit at high speeds,
+-	 * else we see data corruption.
+-	 */
+-	if (uap->vendor->oversampling) {
+-		if (baud >= 3000000 && baud < 3250000 && quot > 1)
+-			quot -= 1;
+-		else if (baud > 3250000 && quot > 2)
+-			quot -= 2;
++	if (!uap->vendor->enable_car) {
++		/*
++		* Workaround for the ST Micro oversampling variants to
++		* increase the bitrate slightly, by lowering the divisor,
++		* to avoid delayed sampling of start bit at high speeds,
++		* else we see data corruption.
++		*/
++		if (uap->vendor->oversampling) {
++			if (baud >= 3000000 && baud < 3250000 && quot > 1)
++				quot -= 1;
++			else if (baud > 3250000 && quot > 2)
++				quot -= 2;
++		}
++		/* Set baud rate */
++		pl011_write(quot & 0x3f, uap, REG_FBRD);
++		pl011_write(quot >> 6, uap, REG_IBRD);
+ 	}
+-	/* Set baud rate */
+-	pl011_write(quot & 0x3f, uap, REG_FBRD);
+-	pl011_write(quot >> 6, uap, REG_IBRD);
+-
+ 	/*
+ 	 * ----------v----------v----------v----------v-----
+ 	 * NOTE: REG_LCRH_TX and REG_LCRH_RX MUST BE WRITTEN AFTER
+-- 
+2.43.0
+

@@ -1,0 +1,47 @@
+From deb8e4d1a66e5f2f08594c242599b44acf08b724 Mon Sep 17 00:00:00 2001
+From: Johnny Liu <johnliu@nvidia.com>
+Date: Sun, 3 Aug 2025 02:37:26 +0000
+Subject: [PATCH 90/95] NVIDIA: SAUCE: memory: tegra: add bwmgr id for display
+ client
+
+Use correct BPMP BWMGR id for display client.
+
+Bug 5411869
+
+Upstream-Status: Backport
+Change-Id: Ide8ffa27a0f84a9ca6b078df202f84efa411d72d
+Signed-off-by: Johnny Liu <johnliu@nvidia.com>
+Reviewed-on: https://git-master.nvidia.com/r/c/3rdparty/canonical/linux-noble/+/3422436
+Reviewed-by: Sumit Gupta <sumitg@nvidia.com>
+GVS: buildbot_gerritrpt <buildbot_gerritrpt@nvidia.com>
+Reviewed-by: Ishan Shah <ishah@nvidia.com>
+Reviewed-by: Amulya Yarlagadda <ayarlagadda@nvidia.com>
+(cherry picked from commit a22ffc04be9bce85773e689e1c82ae06dc0b5969)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/memory/tegra/tegra264.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/memory/tegra/tegra264.c b/drivers/memory/tegra/tegra264.c
+index 2c77d145c0a9..75ce6691406a 100644
+--- a/drivers/memory/tegra/tegra264.c
++++ b/drivers/memory/tegra/tegra264.c
+@@ -458,6 +458,8 @@ static const struct tegra_mc_client tegra264_mc_clients[] = {
+ 	}, {
+ 		.id = TEGRA264_MEMORY_CLIENT_DISPR,
+ 		.name = "dispr",
++		.bpmp_id = TEGRA264_BWMGR_DISPLAY,
++		.type = TEGRA_ICC_ISO_DISPLAY,
+ 	}, {
+ 		.id = TEGRA264_MEMORY_CLIENT_MSSSEQR,
+ 		.name = "mssseqr",
+@@ -1188,4 +1190,4 @@ const struct tegra_mc_soc tegra264_mc_soc = {
+ 			MSS_SBS_FILL_FIFO_SISO_OVERFLOW_INTMASK |
+ 			MSS_SBS_FILL_FIFO_NISO_OVERFLOW_INTMASK,
+ 	.mc_ch_intmask = WCAM_ERR_INTMASK,
+-};
+\ No newline at end of file
++};
+-- 
+2.43.0
+

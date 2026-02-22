@@ -1,0 +1,41 @@
+From 30ee71bc098ff41f725f7e8a4834f3d68bd1934c Mon Sep 17 00:00:00 2001
+From: Jon Hunter <jonathanh@nvidia.com>
+Date: Tue, 7 Oct 2025 15:59:41 +0100
+Subject: [PATCH 16/95] NVIDIA: SAUCE: cpufreq: tegra194: Remove unused
+ variable
+
+The variable 'maxcpus_per_clock' is no longer used and so remove this to
+fix a unused variable compiler warning.
+
+Bug 5213905
+
+Upstream-Status: Backport
+Change-Id: I92aa24c6cece6f2a620982102c3fbce9ab18e6c7
+Signed-off-by: Jon Hunter <jonathanh@nvidia.com>
+Reviewed-on: https://git-master.nvidia.com/r/c/3rdparty/canonical/linux-noble/+/3465057
+(cherry picked from commit 9ec1570750b14ac2590484906c9e66d1b125b57b)
+Reviewed-on: https://git-master.nvidia.com/r/c/3rdparty/canonical/linux-noble/+/3469209
+GVS: buildbot_gerritrpt <buildbot_gerritrpt@nvidia.com>
+Reviewed-by: Brad Griffis <bgriffis@nvidia.com>
+(cherry picked from commit e1c5eb7217363866365e394589edadf23c05771f)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/cpufreq/tegra194-cpufreq.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/drivers/cpufreq/tegra194-cpufreq.c b/drivers/cpufreq/tegra194-cpufreq.c
+index a70866cf2bc3..774e1b797584 100644
+--- a/drivers/cpufreq/tegra194-cpufreq.c
++++ b/drivers/cpufreq/tegra194-cpufreq.c
+@@ -615,8 +615,6 @@ static int tegra_cpufreq_init_cpufreq_table(struct cpufreq_policy *policy,
+ static int tegra194_cpufreq_init(struct cpufreq_policy *policy)
+ {
+ 	struct tegra194_cpufreq_data *data = cpufreq_get_driver_data();
+-	int maxcpus_per_clock = data->soc->maxcpus_per_cluster *
+-		data->soc->clusters_per_clk;
+ 	u32 clusterid = data->cpu_data[policy->cpu].clusterid;
+ 	struct cpufreq_frequency_table *freq_table;
+ 	struct cpufreq_frequency_table *bpmp_lut;
+-- 
+2.43.0
+

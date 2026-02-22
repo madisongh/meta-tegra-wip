@@ -1,0 +1,42 @@
+From ef11642b6d8f1b498ec729d29d63b3fa8a4c3309 Mon Sep 17 00:00:00 2001
+From: Sumit Gupta <sumitg@nvidia.com>
+Date: Tue, 16 Jan 2024 14:49:26 +0530
+Subject: [PATCH 53/95] NVIDIA: SAUCE: memory: tegra: add clients to MC clients
+ table
+
+Add MC clients to the table in Tegra264 MC driver.
+
+http://nvbugs/4183070
+
+Upstream-Status: Backport
+Signed-off-by: Sumit Gupta <sumitg@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit b107c2588be2cc37063b1cafaed3e286afca8a0f)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/memory/tegra/tegra264.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/memory/tegra/tegra264.c b/drivers/memory/tegra/tegra264.c
+index 5203e6c11372..2c846c58244f 100644
+--- a/drivers/memory/tegra/tegra264.c
++++ b/drivers/memory/tegra/tegra264.c
+@@ -80,6 +80,12 @@ static const struct tegra_mc_client tegra264_mc_clients[] = {
+ 		.name = "apew",
+ 		.bpmp_id = TEGRA264_BWMGR_APE,
+ 		.type = TEGRA_ICC_ISO_AUDIO,
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_BPMPR,
++		.name = "bpmpr",
++	}, {
++		.id = TEGRA264_MEMORY_CLIENT_BPMPW,
++		.name = "bpmpw",
+ 	}, {
+ 		.id = TEGRA264_MEMORY_CLIENT_APEDMAR,
+ 		.name = "apedmar",
+-- 
+2.43.0
+

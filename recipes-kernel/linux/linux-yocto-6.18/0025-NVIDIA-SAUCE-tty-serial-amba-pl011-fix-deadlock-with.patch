@@ -1,0 +1,62 @@
+From 76dfb692d236079c653f435418067a5a7ed536c3 Mon Sep 17 00:00:00 2001
+From: Kartik <kkartik@nvidia.com>
+Date: Tue, 21 Jun 2022 15:22:17 +0000
+Subject: [PATCH 25/95] NVIDIA: SAUCE: tty: serial: amba-pl011: fix deadlock
+ with lpbk
+
+BugLink: https://bugs.launchpad.net/bugs/2080908
+
+Hang is seen when UART if UART transfers are closed abruptly.
+The issue is seen only when the UART is running in DMA mode with
+internal loopback and HW Flow control enabled.
+
+When force termination happens on UART loopback transfers, the RX
+stops before TX. This makes TX to wait for CTS to toggle, which never
+happens. This renders UART as busy and makes the driver to wait
+endlessly before terminating the DMA transfers.
+
+To fix this, disable HW flow control during the UART shutdown if
+loopback is used.
+
+http://nvbugs/3684799
+http://nvbugs/4754882
+
+Upstream-Status: Backport
+Signed-off-by: Kartik <kkartik@nvidia.com>
+Tested-by: Petlozu Pravareshwar <petlozup@nvidia.com>
+Reviewed-by: Petlozu Pravareshwar <petlozup@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 361e4d4dfdbaa4168695387ed4e20d4fb8ea67de)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/tty/serial/amba-pl011.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/tty/serial/amba-pl011.c b/drivers/tty/serial/amba-pl011.c
+index eb4bd7601c05..6eac833fb5d2 100644
+--- a/drivers/tty/serial/amba-pl011.c
++++ b/drivers/tty/serial/amba-pl011.c
+@@ -1201,9 +1201,17 @@ static void pl011_dma_startup(struct uart_amba_port *uap)
+ 
+ static void pl011_dma_shutdown(struct uart_amba_port *uap)
+ {
++	unsigned int cr;
+ 	if (!(uap->using_tx_dma || uap->using_rx_dma))
+ 		return;
+ 
++	/* Fix potential deadlock when UART loopback is enabled. */
++	cr = pl011_read(uap, REG_CR);
++	if (cr & UART011_CR_LBE) {
++		cr &= ~(UART011_CR_RTSEN | UART011_CR_CTSEN);
++		pl011_write(cr, uap, REG_CR);
++	}
++
+ 	/* Disable RX and TX DMA */
+ 	while (pl011_read(uap, REG_FR) & uap->vendor->fr_busy)
+ 		cpu_relax();
+-- 
+2.43.0
+

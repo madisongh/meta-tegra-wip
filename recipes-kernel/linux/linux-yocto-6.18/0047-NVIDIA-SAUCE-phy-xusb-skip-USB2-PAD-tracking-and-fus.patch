@@ -1,0 +1,99 @@
+From 0ddb835c5ccefb28b20c1322ccf22d61451cb55b Mon Sep 17 00:00:00 2001
+From: Sing-Han Chen <singhanc@nvidia.com>
+Date: Thu, 20 Jun 2024 06:11:39 +0000
+Subject: [PATCH 47/95] NVIDIA: SAUCE: phy: xusb: skip USB2 PAD tracking and
+ fuse
+
+The USB2 PAD tracking clock is not necessary a dedicated clock.
+And fuse settings is not ready for everyone in this stage.
+
+http://nvbugs/4703456
+
+Upstream-Status: Backport
+Signed-off-by: Sing-Han Chen <singhanc@nvidia.com>
+Signed-off-by: Bodla Rakesh Babu <rbodla@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 201fdb5691df1158520068e056d6f2a471b4492f)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/phy/tegra/xusb-tegra186.c | 19 ++++++++++++++-----
+ drivers/phy/tegra/xusb.h          |  1 +
+ 2 files changed, 15 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/phy/tegra/xusb-tegra186.c b/drivers/phy/tegra/xusb-tegra186.c
+index f9c01848529a..aa51afbb61f7 100644
+--- a/drivers/phy/tegra/xusb-tegra186.c
++++ b/drivers/phy/tegra/xusb-tegra186.c
+@@ -943,8 +943,13 @@ static int tegra186_utmi_phy_power_on(struct phy *phy)
+ 	value = padctl_readl(padctl, XUSB_PADCTL_USB2_OTG_PADX_CTL0(index));
+ 	value &= ~USB2_OTG_PD_ZI;
+ 	value |= TERM_SEL;
+-	value &= ~HS_CURR_LEVEL(~0);
+ 
++	if (padctl->soc->ignore_fuse) {
++		padctl_writel(padctl, value, XUSB_PADCTL_USB2_OTG_PADX_CTL0(index));
++		goto ignore_fuse;
++	}
++
++	value &= ~HS_CURR_LEVEL(~0);
+ 	if (usb2->hs_curr_level_offset) {
+ 		int hs_current_level;
+ 
+@@ -970,6 +975,7 @@ static int tegra186_utmi_phy_power_on(struct phy *phy)
+ 	value |= RPD_CTRL(priv->calib.rpd_ctrl);
+ 	padctl_writel(padctl, value, XUSB_PADCTL_USB2_OTG_PADX_CTL1(index));
+ 
++ignore_fuse:
+ 	tegra186_utmi_pad_power_on(phy);
+ 
+ 	return 0;
+@@ -1080,7 +1086,7 @@ tegra186_usb2_pad_probe(struct tegra_xusb_padctl *padctl,
+ 		goto out;
+ 	}
+ 
+-	priv->usb2_trk_clk = devm_clk_get(&pad->dev, "trk");
++	priv->usb2_trk_clk = devm_clk_get_optional(&pad->dev, "trk");
+ 	if (IS_ERR(priv->usb2_trk_clk)) {
+ 		err = PTR_ERR(priv->usb2_trk_clk);
+ 		dev_dbg(&pad->dev, "failed to get usb2 trk clock: %d\n", err);
+@@ -1562,9 +1568,11 @@ tegra186_xusb_padctl_probe(struct device *dev,
+ 	if (IS_ERR(priv->ao_regs))
+ 		return ERR_CAST(priv->ao_regs);
+ 
+-	err = tegra186_xusb_read_fuse_calibration(priv);
+-	if (err < 0)
+-		return ERR_PTR(err);
++	if (!soc->ignore_fuse) {
++		err = tegra186_xusb_read_fuse_calibration(priv);
++		if (err < 0)
++			return ERR_PTR(err);
++	}
+ 
+ 	priv->prod_list = devm_tegra_prod_get(dev);
+ 	if (IS_ERR_OR_NULL(priv->prod_list)) {
+@@ -1797,6 +1805,7 @@ const struct tegra_xusb_padctl_soc tegra264_xusb_padctl_soc = {
+ 	.poll_trk_completed = true,
+ 	.trk_hw_mode = true,
+ 	.supports_lp_cfg_en = true,
++	.ignore_fuse = true,
+ };
+ EXPORT_SYMBOL_GPL(tegra264_xusb_padctl_soc);
+ #endif
+diff --git a/drivers/phy/tegra/xusb.h b/drivers/phy/tegra/xusb.h
+index b3302e9c7896..b6266b3ee1c9 100644
+--- a/drivers/phy/tegra/xusb.h
++++ b/drivers/phy/tegra/xusb.h
+@@ -436,6 +436,7 @@ struct tegra_xusb_padctl_soc {
+ 	bool trk_hw_mode;
+ 	bool trk_update_on_idle;
+ 	bool supports_lp_cfg_en;
++	bool ignore_fuse;
+ };
+ 
+ struct tegra_xusb_padctl {
+-- 
+2.43.0
+

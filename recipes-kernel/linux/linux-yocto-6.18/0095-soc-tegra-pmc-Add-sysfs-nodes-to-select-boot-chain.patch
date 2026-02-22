@@ -1,0 +1,284 @@
+From fafb39c0eefa84a7f25c7d939295cf7e4e8626c1 Mon Sep 17 00:00:00 2001
+From: Petlozu Pravareshwar <petlozup@nvidia.com>
+Date: Tue, 29 Jul 2025 22:35:35 +0000
+Subject: [PATCH 95/95] soc/tegra: pmc: Add sysfs nodes to select boot chain
+
+Add sysfs nodes to select A/B boot chain so that BootROM can select
+the right boot path on warm boot.
+
+Bug 4510385
+Bug 5310687
+
+Upstream-Status: Backport
+Signed-off-by: Petlozu Pravareshwar <petlozup@nvidia.com>
+Change-Id: Idb9534ea533cd88094b6835a28f3b7141e954c29
+Reviewed-on: https://git-master.nvidia.com/r/c/3rdparty/canonical/linux-noble/+/3456564
+(cherry picked from commit cbc5d03fb9fe9790586b3ace4ebb98078e17cce3)
+Reviewed-on: https://git-master.nvidia.com/r/c/3rdparty/canonical/linux-noble/+/3468493
+GVS: buildbot_gerritrpt <buildbot_gerritrpt@nvidia.com>
+Tested-by: mobile promotions <svcmobile_promotions@nvidia.com>
+Reviewed-by: Laxman Dewangan <ldewangan@nvidia.com>
+Reviewed-by: mobile promotions <svcmobile_promotions@nvidia.com>
+(cherry picked from commit f26de42a861ec5d47e6421bcfded6468fc2fda22)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/soc/tegra/pmc.c | 184 ++++++++++++++++++++++++++++++++++++++++
+ include/soc/tegra/pmc.h |   5 ++
+ 2 files changed, 189 insertions(+)
+
+diff --git a/drivers/soc/tegra/pmc.c b/drivers/soc/tegra/pmc.c
+index 6288d0954b1b..270e3e025f70 100644
+--- a/drivers/soc/tegra/pmc.c
++++ b/drivers/soc/tegra/pmc.c
+@@ -188,6 +188,29 @@
+ #define  TEGRA_SMC_PMC_READ	0xaa
+ #define  TEGRA_SMC_PMC_WRITE	0xbb
+ 
++/* Bit field definitions for scratch registers */
++#define BR_FAIL_BITMAP_MASK		0xF
++#define BR_FAIL_BITMAP_SHIFT		0
++#define BR_ACTIVE_CHAIN_MASK		0x3
++#define BR_ACTIVE_CHAIN_SHIFT		4
++#define BOOT_CHAIN_STATUS_A_MASK	0x1
++#define BOOT_CHAIN_STATUS_A_SHIFT	7
++#define BOOT_CHAIN_STATUS_B_MASK	0x1
++#define BOOT_CHAIN_STATUS_B_SHIFT	8
++#define BOOT_CHAIN_CURRENT_MASK		0x3
++#define BOOT_CHAIN_CURRENT_SHIFT	11
++#define LAST_BOOT_CHAIN_FAILED_MASK	0x1
++#define LAST_BOOT_CHAIN_FAILED_SHIFT	13
++
++#define ROOTFS_SR_MAGIC_MASK		0xFFFF
++#define ROOTFS_SR_MAGIC_SHIFT		0
++#define ROOTFS_CURRENT_MASK		0x3
++#define ROOTFS_CURRENT_SHIFT		16
++#define ROOTFS_RETRY_COUNT_B_MASK	0x3
++#define ROOTFS_RETRY_COUNT_B_SHIFT	18
++#define ROOTFS_RETRY_COUNT_A_MASK	0x3
++#define ROOTFS_RETRY_COUNT_A_SHIFT	20
++
+ struct pmc_clk {
+ 	struct clk_hw	hw;
+ 	unsigned long	offs;
+@@ -2076,6 +2099,156 @@ void tegra_pmc_reset_sysfs_remove(struct tegra_pmc *pmc)
+ 	device_remove_file(dev, &dev_attr_reset_level);
+ }
+ 
++/* Helper macros for scratch sysfs attributes */
++#define TEGRA_PMC_SCRATCH_ATTR_RW(name, reg_field, mask, shift, min_val, max_val) \
++static ssize_t name##_show(struct device *dev, struct device_attribute *attr, char *buf) \
++{ \
++	struct tegra_pmc *pmc = dev_get_drvdata(dev); \
++	u32 value; \
++	if (!pmc->scratch || !pmc->soc->regs->reg_field) \
++		return -ENODEV; \
++	value = tegra_pmc_scratch_readl(pmc, pmc->soc->regs->reg_field); \
++	value = (value >> shift) & mask; \
++	return sprintf(buf, "%u\n", value); \
++} \
++static ssize_t name##_store(struct device *dev, struct device_attribute *attr, \
++			    const char *buf, size_t count) \
++{ \
++	struct tegra_pmc *pmc = dev_get_drvdata(dev); \
++	unsigned long value; \
++	u32 reg_val; \
++	int ret; \
++	if (!pmc->scratch || !pmc->soc->regs->reg_field) \
++		return -ENODEV; \
++	ret = kstrtoul(buf, 0, &value); \
++	if (ret) \
++		return ret; \
++	if (value < min_val || value > max_val) \
++		return -EINVAL; \
++	reg_val = tegra_pmc_scratch_readl(pmc, pmc->soc->regs->reg_field); \
++	reg_val &= ~(mask << shift); \
++	reg_val |= (value & mask) << shift; \
++	tegra_pmc_scratch_writel(pmc, reg_val, pmc->soc->regs->reg_field); \
++	return count; \
++} \
++static DEVICE_ATTR_RW(name)
++
++#define TEGRA_PMC_SCRATCH_ATTR_RO(name, reg_field, mask, shift) \
++static ssize_t name##_show(struct device *dev, struct device_attribute *attr, char *buf) \
++{ \
++	struct tegra_pmc *pmc = dev_get_drvdata(dev); \
++	u32 value; \
++	if (!pmc->scratch || !pmc->soc->regs->reg_field) \
++		return -ENODEV; \
++	value = tegra_pmc_scratch_readl(pmc, pmc->soc->regs->reg_field); \
++	value = (value >> shift) & mask; \
++	return sprintf(buf, "%u\n", value); \
++} \
++static DEVICE_ATTR_RO(name)
++
++/* Scratch register sysfs attributes */
++TEGRA_PMC_SCRATCH_ATTR_RW(br_fail_bitmap, scratch_l0_1_0,
++			  BR_FAIL_BITMAP_MASK, BR_FAIL_BITMAP_SHIFT, 0, 0xF);
++TEGRA_PMC_SCRATCH_ATTR_RW(br_active_chain, scratch_l0_1_0,
++			  BR_ACTIVE_CHAIN_MASK, BR_ACTIVE_CHAIN_SHIFT, 0, 3);
++TEGRA_PMC_SCRATCH_ATTR_RW(boot_chain_status_a, scratch_l0_1_0,
++			  BOOT_CHAIN_STATUS_A_MASK, BOOT_CHAIN_STATUS_A_SHIFT, 0, 1);
++TEGRA_PMC_SCRATCH_ATTR_RW(boot_chain_status_b, scratch_l0_1_0,
++			  BOOT_CHAIN_STATUS_B_MASK, BOOT_CHAIN_STATUS_B_SHIFT, 0, 1);
++TEGRA_PMC_SCRATCH_ATTR_RO(boot_chain_current, scratch_l0_1_0,
++			  BOOT_CHAIN_CURRENT_MASK, BOOT_CHAIN_CURRENT_SHIFT);
++TEGRA_PMC_SCRATCH_ATTR_RO(last_boot_chain_failed, scratch_l0_1_0,
++			  LAST_BOOT_CHAIN_FAILED_MASK, LAST_BOOT_CHAIN_FAILED_SHIFT);
++
++TEGRA_PMC_SCRATCH_ATTR_RW(rootfs_sr_magic, scratch_l0_21_0,
++			  ROOTFS_SR_MAGIC_MASK, ROOTFS_SR_MAGIC_SHIFT, 0, 0xFFFF);
++TEGRA_PMC_SCRATCH_ATTR_RW(rootfs_current, scratch_l0_21_0,
++			  ROOTFS_CURRENT_MASK, ROOTFS_CURRENT_SHIFT, 0, 1);
++TEGRA_PMC_SCRATCH_ATTR_RW(rootfs_retry_count_b, scratch_l0_21_0,
++			  ROOTFS_RETRY_COUNT_B_MASK, ROOTFS_RETRY_COUNT_B_SHIFT, 0, 3);
++TEGRA_PMC_SCRATCH_ATTR_RW(rootfs_retry_count_a, scratch_l0_21_0,
++			  ROOTFS_RETRY_COUNT_A_MASK, ROOTFS_RETRY_COUNT_A_SHIFT, 0, 3);
++
++void tegra_pmc_scratch_sysfs_init(struct tegra_pmc *pmc)
++{
++	struct device *dev = pmc->dev;
++	int err;
++
++	if (!pmc->scratch) {
++		dev_warn(dev, "scratch registers not available, skipping sysfs init\n");
++		return;
++	}
++
++	/* Only create attributes if the register fields are defined */
++	if (pmc->soc->regs->scratch_l0_1_0) {
++		err = device_create_file(dev, &dev_attr_br_fail_bitmap);
++		if (err)
++			dev_warn(dev, "failed to create br_fail_bitmap sysfs: %d\n", err);
++
++		err = device_create_file(dev, &dev_attr_br_active_chain);
++		if (err)
++			dev_warn(dev, "failed to create br_active_chain sysfs: %d\n", err);
++
++		err = device_create_file(dev, &dev_attr_boot_chain_status_a);
++		if (err)
++			dev_warn(dev, "failed to create boot_chain_status_a sysfs: %d\n", err);
++
++		err = device_create_file(dev, &dev_attr_boot_chain_status_b);
++		if (err)
++			dev_warn(dev, "failed to create boot_chain_status_b sysfs: %d\n", err);
++
++		err = device_create_file(dev, &dev_attr_boot_chain_current);
++		if (err)
++			dev_warn(dev, "failed to create boot_chain_current sysfs: %d\n", err);
++
++		err = device_create_file(dev, &dev_attr_last_boot_chain_failed);
++		if (err)
++			dev_warn(dev, "failed to create last_boot_chain_failed sysfs: %d\n", err);
++	}
++
++	if (pmc->soc->regs->scratch_l0_21_0) {
++		err = device_create_file(dev, &dev_attr_rootfs_sr_magic);
++		if (err)
++			dev_warn(dev, "failed to create rootfs_sr_magic sysfs: %d\n", err);
++
++		err = device_create_file(dev, &dev_attr_rootfs_current);
++		if (err)
++			dev_warn(dev, "failed to create rootfs_current sysfs: %d\n", err);
++
++		err = device_create_file(dev, &dev_attr_rootfs_retry_count_b);
++		if (err)
++			dev_warn(dev, "failed to create rootfs_retry_count_b sysfs: %d\n", err);
++
++		err = device_create_file(dev, &dev_attr_rootfs_retry_count_a);
++		if (err)
++			dev_warn(dev, "failed to create rootfs_retry_count_a sysfs: %d\n", err);
++	}
++}
++
++void tegra_pmc_scratch_sysfs_remove(struct tegra_pmc *pmc)
++{
++	struct device *dev = pmc->dev;
++
++	if (!pmc->scratch)
++		return;
++
++	if (pmc->soc->regs->scratch_l0_1_0) {
++		device_remove_file(dev, &dev_attr_br_fail_bitmap);
++		device_remove_file(dev, &dev_attr_br_active_chain);
++		device_remove_file(dev, &dev_attr_boot_chain_status_a);
++		device_remove_file(dev, &dev_attr_boot_chain_status_b);
++		device_remove_file(dev, &dev_attr_boot_chain_current);
++		device_remove_file(dev, &dev_attr_last_boot_chain_failed);
++	}
++
++	if (pmc->soc->regs->scratch_l0_21_0) {
++		device_remove_file(dev, &dev_attr_rootfs_sr_magic);
++		device_remove_file(dev, &dev_attr_rootfs_current);
++		device_remove_file(dev, &dev_attr_rootfs_retry_count_b);
++		device_remove_file(dev, &dev_attr_rootfs_retry_count_a);
++	}
++}
++
+ static int tegra_pmc_irq_translate(struct irq_domain *domain,
+ 				   struct irq_fwspec *fwspec,
+ 				   unsigned long *hwirq,
+@@ -2879,6 +3052,7 @@ static int tegra_pmc_probe(struct platform_device *pdev)
+ 
+ 	tegra_pmc_clock_register(pmc, pdev->dev.of_node);
+ 	platform_set_drvdata(pdev, pmc);
++	tegra_pmc_scratch_sysfs_init(pmc);
+ 	tegra_pm_init_suspend();
+ 
+ 	/* Some wakes require specific filter configuration */
+@@ -2897,6 +3071,13 @@ static int tegra_pmc_probe(struct platform_device *pdev)
+ 	return err;
+ }
+ 
++static void tegra_pmc_remove(struct platform_device *pdev)
++{
++	struct tegra_pmc *pmc = platform_get_drvdata(pdev);
++
++	tegra_pmc_scratch_sysfs_remove(pmc);
++}
++
+ /*
+  * Ensures that sufficient time is passed for a register write to
+  * serialize into the 32KHz domain.
+@@ -4164,6 +4345,8 @@ static const struct tegra_pmc_soc tegra234_pmc_soc = {
+ 
+ static const struct tegra_pmc_regs tegra264_pmc_regs = {
+ 	.scratch0 = 0x684,
++	.scratch_l0_1_0 = 0x67C,
++	.scratch_l0_21_0 = 0x6cc,
+ 	.rst_status = 0x4,
+ 	.rst_source_shift = 0x2,
+ 	.rst_source_mask = 0x1fc,
+@@ -4363,6 +4546,7 @@ static struct platform_driver tegra_pmc_driver = {
+ 		.sync_state = tegra_pmc_sync_state,
+ 	},
+ 	.probe = tegra_pmc_probe,
++	.remove = tegra_pmc_remove,
+ };
+ builtin_platform_driver(tegra_pmc_driver);
+ 
+diff --git a/include/soc/tegra/pmc.h b/include/soc/tegra/pmc.h
+index b53067a8f4b2..d15289fe2379 100644
+--- a/include/soc/tegra/pmc.h
++++ b/include/soc/tegra/pmc.h
+@@ -167,6 +167,8 @@ struct tegra_io_pad_soc {
+ 
+ struct tegra_pmc_regs {
+ 	unsigned int scratch0;
++	unsigned int scratch_l0_1_0;
++	unsigned int scratch_l0_21_0;
+ 	unsigned int rst_status;
+ 	unsigned int rst_source_shift;
+ 	unsigned int rst_source_mask;
+@@ -396,6 +398,9 @@ int tegra186_pmc_suspend(struct tegra_pmc *pmc);
+ void tegra_pmc_reset_sysfs_init(struct tegra_pmc *pmc);
+ void tegra_pmc_reset_sysfs_remove(struct tegra_pmc *pmc);
+ 
++void tegra_pmc_scratch_sysfs_init(struct tegra_pmc *pmc);
++void tegra_pmc_scratch_sysfs_remove(struct tegra_pmc *pmc);
++
+ int tegra_pmc_pinctrl_init(struct tegra_pmc *pmc);
+ 
+ int tegra_pmc_init(struct tegra_pmc *pmc);
+-- 
+2.43.0
+

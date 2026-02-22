@@ -1,0 +1,222 @@
+From eaab1199920c35c9961c2641287947e80d1b06fc Mon Sep 17 00:00:00 2001
+From: Prathamesh Shete <pshete@nvidia.com>
+Date: Wed, 19 Jun 2024 09:58:54 +0000
+Subject: [PATCH 58/95] NVIDIA: SAUCE: gpio: t264: add GPIO support for T264
+
+Add required support for T264 GPIO
+
+Upstream-Status: Backport
+Signed-off-by: Prathamesh Shete <pshete@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 5ca2686e1feb5cbac682d1caa44f0ab369c8b5e8)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/gpio/gpio-tegra186.c             | 99 ++++++++++++++++++++++++
+ include/dt-bindings/gpio/tegra264-gpio.h | 61 +++++++++++++++
+ 2 files changed, 160 insertions(+)
+ create mode 100644 include/dt-bindings/gpio/tegra264-gpio.h
+
+diff --git a/drivers/gpio/gpio-tegra186.c b/drivers/gpio/gpio-tegra186.c
+index 4d3db6e06eeb..8f263ac54093 100644
+--- a/drivers/gpio/gpio-tegra186.c
++++ b/drivers/gpio/gpio-tegra186.c
+@@ -21,6 +21,7 @@
+ #include <dt-bindings/gpio/tegra234-gpio.h>
+ #include <dt-bindings/gpio/tegra241-gpio.h>
+ #include <dt-bindings/gpio/tegra256-gpio.h>
++#include <dt-bindings/gpio/tegra264-gpio.h>
+ 
+ /* security registers */
+ #define TEGRA186_GPIO_CTL_SCR 0x0c
+@@ -749,6 +750,7 @@ static const struct of_device_id tegra186_pmc_of_match[] = {
+ 	{ .compatible = "nvidia,tegra186-pmc" },
+ 	{ .compatible = "nvidia,tegra194-pmc" },
+ 	{ .compatible = "nvidia,tegra234-pmc" },
++	{ .compatible = "nvidia,tegra264-pmc" },
+ 	{ /* sentinel */ }
+ };
+ 
+@@ -1279,6 +1281,94 @@ static const struct tegra_gpio_soc tegra241_aon_soc = {
+ 	.num_irqs_per_bank = 8,
+ 	.has_vm_support = false,
+ };
++#define TEGRA264_MAIN_GPIO_PORT(_name, _bank, _port, _pins)	\
++	[TEGRA264_MAIN_GPIO_PORT_##_name] = {		\
++		.name = #_name,					\
++		.bank = _bank,					\
++		.port = _port,					\
++		.pins = _pins,					\
++	}
++
++static const struct tegra_gpio_port tegra264_main_ports[] = {
++	TEGRA264_MAIN_GPIO_PORT(T, 0, 0, 7),
++	TEGRA264_MAIN_GPIO_PORT(U, 0, 1, 8),
++	TEGRA264_MAIN_GPIO_PORT(V, 0, 2, 8),
++	TEGRA264_MAIN_GPIO_PORT(W, 0, 3, 8),
++	TEGRA264_MAIN_GPIO_PORT(AL, 0, 4, 3),
++	TEGRA264_MAIN_GPIO_PORT(Y, 0, 5, 8),
++	TEGRA264_MAIN_GPIO_PORT(Z, 0, 6, 8),
++	TEGRA264_MAIN_GPIO_PORT(X, 0, 7, 6),
++	TEGRA264_MAIN_GPIO_PORT(H, 1, 0, 8),
++	TEGRA264_MAIN_GPIO_PORT(J, 1, 1, 8),
++	TEGRA264_MAIN_GPIO_PORT(K, 1, 2, 8),
++	TEGRA264_MAIN_GPIO_PORT(L, 1, 3, 8),
++	TEGRA264_MAIN_GPIO_PORT(M, 1, 4, 6),
++	TEGRA264_MAIN_GPIO_PORT(P, 2, 0, 8),
++	TEGRA264_MAIN_GPIO_PORT(Q, 2, 1, 8),
++	TEGRA264_MAIN_GPIO_PORT(R, 2, 2, 8),
++	TEGRA264_MAIN_GPIO_PORT(S, 2, 3, 2),
++	TEGRA264_MAIN_GPIO_PORT(F, 3, 0, 8),
++	TEGRA264_MAIN_GPIO_PORT(G, 3, 1, 5),
++};
++
++static const struct tegra_gpio_soc tegra264_main_soc = {
++	.num_ports = ARRAY_SIZE(tegra264_main_ports),
++	.ports = tegra264_main_ports,
++	.name = "tegra264-gpio-main",
++	.instance = 0,
++	.num_irqs_per_bank = 8,
++	.has_vm_support = true,
++};
++
++#define TEGRA264_UPHY_GPIO_PORT(_name, _bank, _port, _pins)	\
++	[TEGRA264_UPHY_GPIO_PORT_##_name] = {			\
++		.name = #_name,					\
++		.bank = _bank,					\
++		.port = _port,					\
++		.pins = _pins,					\
++	}
++
++static const struct tegra_gpio_port tegra264_uphy_ports[] = {
++	TEGRA264_UPHY_GPIO_PORT(A, 0, 0, 6),
++	TEGRA264_UPHY_GPIO_PORT(B, 0, 1, 8),
++	TEGRA264_UPHY_GPIO_PORT(C, 0, 2, 3),
++	TEGRA264_UPHY_GPIO_PORT(D, 1, 0, 8),
++	TEGRA264_UPHY_GPIO_PORT(E, 1, 1, 4),
++};
++
++static const struct tegra_gpio_soc tegra264_uphy_soc = {
++	.num_ports = ARRAY_SIZE(tegra264_uphy_ports),
++	.ports = tegra264_uphy_ports,
++	.name = "tegra264-gpio-uphy",
++	.instance = 0,
++	.num_irqs_per_bank = 8,
++	.has_vm_support = true,
++};
++
++#define TEGRA264_AON_GPIO_PORT(_name, _bank, _port, _pins)	\
++	[TEGRA264_AON_GPIO_PORT_##_name] = {			\
++		.name = #_name,					\
++		.bank = _bank,					\
++		.port = _port,					\
++		.pins = _pins,					\
++	}
++
++static const struct tegra_gpio_port tegra264_aon_ports[] = {
++	TEGRA264_AON_GPIO_PORT(AA, 0, 0, 8),
++	TEGRA264_AON_GPIO_PORT(BB, 0, 1, 2),
++	TEGRA264_AON_GPIO_PORT(CC, 0, 2, 8),
++	TEGRA264_AON_GPIO_PORT(DD, 0, 3, 8),
++	TEGRA264_AON_GPIO_PORT(EE, 0, 4, 4)
++};
++
++static const struct tegra_gpio_soc tegra264_aon_soc = {
++	.num_ports = ARRAY_SIZE(tegra264_aon_ports),
++	.ports = tegra264_aon_ports,
++	.name = "tegra264-gpio-aon",
++	.instance = 1,
++	.num_irqs_per_bank = 8,
++	.has_vm_support = true,
++};
+ 
+ #define TEGRA256_MAIN_GPIO_PORT(_name, _bank, _port, _pins)	\
+ 	[TEGRA256_MAIN_GPIO_PORT_##_name] = {			\
+@@ -1326,6 +1416,15 @@ static const struct of_device_id tegra186_gpio_of_match[] = {
+ 	}, {
+ 		.compatible = "nvidia,tegra256-gpio",
+ 		.data = &tegra256_main_soc
++	}, {
++		.compatible = "nvidia,tegra264-gpio-main",
++		.data = &tegra264_main_soc
++	}, {
++		.compatible = "nvidia,tegra264-gpio-uphy",
++		.data = &tegra264_uphy_soc
++	}, {
++		.compatible = "nvidia,tegra264-gpio-aon",
++		.data = &tegra264_aon_soc
+ 	}, {
+ 		/* sentinel */
+ 	}
+diff --git a/include/dt-bindings/gpio/tegra264-gpio.h b/include/dt-bindings/gpio/tegra264-gpio.h
+new file mode 100644
+index 000000000000..c5749e489e03
+--- /dev/null
++++ b/include/dt-bindings/gpio/tegra264-gpio.h
+@@ -0,0 +1,61 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved. */
++
++/*
++ * This header provides constants for binding nvidia,tegra234-gpio*.
++ *
++ * The first cell in Tegra's GPIO specifier is the GPIO ID. The macros below
++ * provide names for this.
++ *
++ * The second cell contains standard flag values specified in gpio.h.
++ */
++
++#ifndef _DT_BINDINGS_GPIO_TEGRA264_GPIO_H
++#define _DT_BINDINGS_GPIO_TEGRA264_GPIO_H
++
++#include <dt-bindings/gpio/gpio.h>
++
++/* GPIOs implemented by main GPIO controller */
++#define TEGRA264_MAIN_GPIO_PORT_T  0
++#define TEGRA264_MAIN_GPIO_PORT_U  1
++#define TEGRA264_MAIN_GPIO_PORT_V  2
++#define TEGRA264_MAIN_GPIO_PORT_W  3
++#define TEGRA264_MAIN_GPIO_PORT_AL 4
++#define TEGRA264_MAIN_GPIO_PORT_Y  5
++#define TEGRA264_MAIN_GPIO_PORT_Z  6
++#define TEGRA264_MAIN_GPIO_PORT_X  7
++#define TEGRA264_MAIN_GPIO_PORT_H  8
++#define TEGRA264_MAIN_GPIO_PORT_J  9
++#define TEGRA264_MAIN_GPIO_PORT_K  10
++#define TEGRA264_MAIN_GPIO_PORT_L  11
++#define TEGRA264_MAIN_GPIO_PORT_M  12
++#define TEGRA264_MAIN_GPIO_PORT_P  13
++#define TEGRA264_MAIN_GPIO_PORT_Q  14
++#define TEGRA264_MAIN_GPIO_PORT_R  15
++#define TEGRA264_MAIN_GPIO_PORT_S  16
++#define TEGRA264_MAIN_GPIO_PORT_F  17
++#define TEGRA264_MAIN_GPIO_PORT_G  18
++
++#define TEGRA264_MAIN_GPIO(port, offset) \
++	((TEGRA264_MAIN_GPIO_PORT_##port * 8) + offset)
++
++/* GPIOs implemented by AON GPIO controller */
++#define TEGRA264_AON_GPIO_PORT_AA  0
++#define TEGRA264_AON_GPIO_PORT_BB  1
++#define TEGRA264_AON_GPIO_PORT_CC  2
++#define TEGRA264_AON_GPIO_PORT_DD  3
++#define TEGRA264_AON_GPIO_PORT_EE  4
++
++#define TEGRA264_AON_GPIO(port, offset) \
++	((TEGRA264_AON_GPIO_PORT_##port * 8) + offset)
++
++#define TEGRA264_UPHY_GPIO_PORT_A  0
++#define TEGRA264_UPHY_GPIO_PORT_B  1
++#define TEGRA264_UPHY_GPIO_PORT_C  2
++#define TEGRA264_UPHY_GPIO_PORT_D  3
++#define TEGRA264_UPHY_GPIO_PORT_E  4
++
++#define TEGRA264_UPHY_GPIO(port, offset) \
++	((TEGRA264_UPHY_GPIO_PORT_##port * 8) + offset)
++
++#endif
+-- 
+2.43.0
+

@@ -1,0 +1,144 @@
+From b22f8d9025891064ecb2c1a3d86af13b36027963 Mon Sep 17 00:00:00 2001
+From: Akhil R <akhilrajeev@nvidia.com>
+Date: Fri, 4 Nov 2022 15:47:29 +0530
+Subject: [PATCH 01/95] NVIDIA: SAUCE: dmaengine: tegra: Get slave channel
+ based on DT
+
+BugLink: https://bugs.launchpad.net/bugs/2072591
+
+Add option for DMA clients to provide channel number and
+stream-id in device tree. dma-cells need to be increased to 3
+for accommodating additional details.
+
+This is required in a virtualized environment where all channels
+and clients are not allowed use the same stream id.
+
+The channel number read from device tree is modified to match with
+the hardware channel number in the driver. This is done to avoid
+ABI breakage. Otherwise, it would require updating all the device
+trees that provide this information
+
+http://nvbugs/200761027
+
+Upstream-Status: Backport
+Signed-off-by: Akhil R <akhilrajeev@nvidia.com>
+Reviewed-by: Bitan Biswas <bbiswas@nvidia.com>
+Reviewed-by: Abhilash G <abhilashg@nvidia.com>
+Tested-by: Abhilash G <abhilashg@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 38d7bf773f42ea369cf7c93c49119383a9805a48)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/dma/tegra186-gpc-dma.c | 78 ++++++++++++++++++++++++++--------
+ 1 file changed, 61 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/dma/tegra186-gpc-dma.c b/drivers/dma/tegra186-gpc-dma.c
+index 4d6fe0efa76e..b1e02848d968 100644
+--- a/drivers/dma/tegra186-gpc-dma.c
++++ b/drivers/dma/tegra186-gpc-dma.c
+@@ -1288,10 +1288,54 @@ static void tegra_dma_free_chan_resources(struct dma_chan *dc)
+ 	vchan_free_chan_resources(&tdc->vc);
+ }
+ 
+-static struct dma_chan *tegra_dma_of_xlate(struct of_phandle_args *dma_spec,
+-					   struct of_dma *ofdma)
++static int tegra_dma_program_sid(struct tegra_dma_channel *tdc, int stream_id)
++{
++	unsigned int reg_val =  tdc_read(tdc, TEGRA_GPCDMA_CHAN_MCSEQ);
++
++	reg_val &= ~(TEGRA_GPCDMA_MCSEQ_STREAM_ID0_MASK);
++	reg_val &= ~(TEGRA_GPCDMA_MCSEQ_STREAM_ID1_MASK);
++
++	reg_val |= FIELD_PREP(TEGRA_GPCDMA_MCSEQ_STREAM_ID0_MASK, stream_id);
++	reg_val |= FIELD_PREP(TEGRA_GPCDMA_MCSEQ_STREAM_ID1_MASK, stream_id);
++
++	tdc_write(tdc, TEGRA_GPCDMA_CHAN_MCSEQ, reg_val);
++	return 0;
++}
++
++static struct dma_chan *tegra_dma_get_slave_channel(struct tegra_dma *tdma,
++					    struct of_phandle_args *dma_spec)
++{
++	struct tegra_dma_channel *tdc;
++	struct dma_chan *chan;
++	unsigned int chan_id;
++
++
++	chan_id = dma_spec->args[1];
++	if (chan_id > hweight_long(tdma->chan_mask))
++		return NULL;
++
++	/* Adjust the chan_id as channel id from
++	 * DT is starting from an offset
++	 */
++	chan_id += (ffs(tdma->chan_mask) - 1);
++
++	chan = dma_get_slave_channel(&tdma->channels[chan_id].vc.chan);
++	if (!chan)
++		return NULL;
++
++	tdc = to_tegra_dma_chan(chan);
++	tdc->slave_id = dma_spec->args[0];
++	tdc->stream_id = dma_spec->args[2];
++
++	/* Re-program stream-id for this channel */
++	tegra_dma_program_sid(tdc, tdc->stream_id);
++
++	return chan;
++}
++
++static struct dma_chan *tegra_dma_get_any_slave_channel(struct tegra_dma *tdma,
++					    struct of_phandle_args *dma_spec)
+ {
+-	struct tegra_dma *tdma = ofdma->of_dma_data;
+ 	struct tegra_dma_channel *tdc;
+ 	struct dma_chan *chan;
+ 
+@@ -1305,6 +1349,20 @@ static struct dma_chan *tegra_dma_of_xlate(struct of_phandle_args *dma_spec,
+ 	return chan;
+ }
+ 
++static struct dma_chan *tegra_dma_of_xlate(struct of_phandle_args *dma_spec,
++					   struct of_dma *ofdma)
++{
++	struct tegra_dma *tdma = ofdma->of_dma_data;
++
++	/* Check if channel no and stream-id are specified in devicetree.
++	 * Get any channel and program default stream-id otherwise
++	 */
++	if (dma_spec->args_count == 3)
++		return tegra_dma_get_slave_channel(tdma, dma_spec);
++
++	return tegra_dma_get_any_slave_channel(tdma, dma_spec);
++}
++
+ static const struct tegra_dma_chip_data tegra186_dma_chip_data = {
+ 	.nr_channels = 32,
+ 	.channel_reg_size = SZ_64K,
+@@ -1344,20 +1402,6 @@ static const struct of_device_id tegra_dma_of_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, tegra_dma_of_match);
+ 
+-static int tegra_dma_program_sid(struct tegra_dma_channel *tdc, int stream_id)
+-{
+-	unsigned int reg_val =  tdc_read(tdc, TEGRA_GPCDMA_CHAN_MCSEQ);
+-
+-	reg_val &= ~(TEGRA_GPCDMA_MCSEQ_STREAM_ID0_MASK);
+-	reg_val &= ~(TEGRA_GPCDMA_MCSEQ_STREAM_ID1_MASK);
+-
+-	reg_val |= FIELD_PREP(TEGRA_GPCDMA_MCSEQ_STREAM_ID0_MASK, stream_id);
+-	reg_val |= FIELD_PREP(TEGRA_GPCDMA_MCSEQ_STREAM_ID1_MASK, stream_id);
+-
+-	tdc_write(tdc, TEGRA_GPCDMA_CHAN_MCSEQ, reg_val);
+-	return 0;
+-}
+-
+ static int tegra_dma_probe(struct platform_device *pdev)
+ {
+ 	const struct tegra_dma_chip_data *cdata = NULL;
+-- 
+2.43.0
+

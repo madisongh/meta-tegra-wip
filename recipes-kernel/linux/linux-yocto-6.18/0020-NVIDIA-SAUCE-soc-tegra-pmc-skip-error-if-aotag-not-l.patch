@@ -1,0 +1,55 @@
+From ae17f09d54fc649dd6f9d6722a3f5d71efe83857 Mon Sep 17 00:00:00 2001
+From: Shardar Mohammed <smohammed@nvidia.com>
+Date: Tue, 19 Mar 2024 23:22:40 +0000
+Subject: [PATCH 20/95] NVIDIA: SAUCE: soc/tegra: pmc: skip error if "aotag"
+ not listed
+
+BugLink: https://bugs.launchpad.net/bugs/2072591
+
+On tegra systems with multiple PMC apertures, If an optional aperture
+is not listed then keep that aperture address space pointer as NULL.
+"aotog" is an optional aperture, so make that aperture NULL if its not
+listed in device-tree instead of returning error.
+
+http://nvbugs/3886578
+
+Upstream-Status: Backport
+Signed-off-by: Shardar Mohammed <smohammed@nvidia.com>
+Reviewed-by: Laxman Dewangan <ldewangan@nvidia.com>
+Signed-off-by: Laxman Dewangan <ldewangan@nvidia.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit d56565bb04acb71f1da9b88c614255ff47dbb7d0)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/soc/tegra/pmc.c | 13 ++++++++++---
+ 1 file changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/soc/tegra/pmc.c b/drivers/soc/tegra/pmc.c
+index 034a2a535a1e..8044718717a8 100644
+--- a/drivers/soc/tegra/pmc.c
++++ b/drivers/soc/tegra/pmc.c
+@@ -2897,9 +2897,16 @@ static int tegra_pmc_probe(struct platform_device *pdev)
+ 		if (IS_ERR(pmc->wake))
+ 			return PTR_ERR(pmc->wake);
+ 
+-		pmc->aotag = devm_platform_ioremap_resource_byname(pdev, "aotag");
+-		if (IS_ERR(pmc->aotag))
+-			return PTR_ERR(pmc->aotag);
++		/* "aotag" is an optional aperture */
++		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
++						"aotag");
++		if (res) {
++			pmc->aotag = devm_ioremap_resource(&pdev->dev, res);
++			if (IS_ERR(pmc->aotag))
++				return PTR_ERR(pmc->aotag);
++		} else {
++			pmc->aotag = NULL;
++		}
+ 
+ 		/* "scratch" is an optional aperture */
+ 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+-- 
+2.43.0
+

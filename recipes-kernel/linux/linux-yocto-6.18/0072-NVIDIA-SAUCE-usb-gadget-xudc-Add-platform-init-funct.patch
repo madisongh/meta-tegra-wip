@@ -1,0 +1,248 @@
+From c4a6cd7477c5ef58091e56bd110d2242c2562949 Mon Sep 17 00:00:00 2001
+From: haotienh <haotienh@nvidia.com>
+Date: Thu, 8 Aug 2024 08:31:34 +0000
+Subject: [PATCH 72/95] NVIDIA: SAUCE: usb: gadget: xudc: Add platform init
+ functions
+
+Offsets and expected values of some registers for newer platforms are
+different from previous ones.
+Set registers in platform initializing functions for different
+platforms.
+
+http://nvbugs/4709389
+
+Upstream-Status: Backport
+Signed-off-by: haotienh <haotienh@nvidia.com>
+Reviewed-by: WK Tsai <wtsai@nvidia.com>
+Reviewed-by: Henry Lin <henryl@nvidia.com>
+Reviewed-by: EJ Hsu <ejh@nvidia.com>
+Signed-off-by: Vishwaroop A <va@nvidia.com>
+Acked-by: Noah Wager <noah.wager@canonical.com>
+Acked-by: Jacob Martin <jacob.martin@canonical.com>
+Signed-off-by: Noah Wager <noah.wager@canonical.com>
+(cherry picked from commit 8ce27e48463ef123a15d3e0b128d98bc1c089c15)
+Signed-off-by: Matt Madison <matt@madison.systems>
+---
+ drivers/usb/gadget/udc/tegra-xudc.c | 133 +++++++++++++++++-----------
+ 1 file changed, 83 insertions(+), 50 deletions(-)
+
+diff --git a/drivers/usb/gadget/udc/tegra-xudc.c b/drivers/usb/gadget/udc/tegra-xudc.c
+index f69dc44975db..fc5579052b29 100644
+--- a/drivers/usb/gadget/udc/tegra-xudc.c
++++ b/drivers/usb/gadget/udc/tegra-xudc.c
+@@ -150,7 +150,6 @@
+ #define  SSPX_CORE_CNT30_LMPITP_TIMER_MASK GENMASK(19, 0)
+ #define  SSPX_CORE_CNT30_LMPITP_TIMER(x) ((x) & \
+ 					SSPX_CORE_CNT30_LMPITP_TIMER_MASK)
+-#define SSPX_CORE_CNT32 0x690
+ #define  SSPX_CORE_CNT32_POLL_TBURST_MAX_MASK GENMASK(7, 0)
+ #define  SSPX_CORE_CNT32_POLL_TBURST_MAX(x) ((x) & \
+ 					SSPX_CORE_CNT32_POLL_TBURST_MAX_MASK)
+@@ -556,7 +555,7 @@ struct tegra_xudc_soc {
+ 	bool port_reset_quirk;
+ 	bool port_speed_quirk;
+ 	bool has_ipfs;
+-	bool skip_sspx_config;
++	void (*xudc_device_params_init)(struct tegra_xudc *xudc);
+ };
+ 
+ static inline u32 fpci_readl(struct tegra_xudc *xudc, unsigned int offset)
+@@ -3391,44 +3390,10 @@ static void tegra_xudc_fpci_ipfs_init(struct tegra_xudc *xudc)
+ 	}
+ }
+ 
+-static void tegra_xudc_device_params_init(struct tegra_xudc *xudc)
++static void tegra_xudc_device_params_init_common(struct tegra_xudc *xudc)
+ {
+ 	u32 val, imod;
+ 
+-	if (xudc->soc->has_ipfs) {
+-		val = xudc_readl(xudc, BLCG);
+-		val |= BLCG_ALL;
+-		val &= ~(BLCG_DFPCI | BLCG_UFPCI | BLCG_FE |
+-				BLCG_COREPLL_PWRDN);
+-		val |= BLCG_IOPLL_0_PWRDN;
+-		val |= BLCG_IOPLL_1_PWRDN;
+-		val |= BLCG_IOPLL_2_PWRDN;
+-
+-		xudc_writel(xudc, val, BLCG);
+-	}
+-
+-	if (xudc->soc->port_speed_quirk)
+-		tegra_xudc_limit_port_speed(xudc);
+-
+-	if (!xudc->soc->skip_sspx_config) {
+-		/* Set a reasonable U3 exit timer value. */
+-		val = xudc_readl(xudc, SSPX_CORE_PADCTL4);
+-		val &= ~(SSPX_CORE_PADCTL4_RXDAT_VLD_TIMEOUT_U3_MASK);
+-		val |= SSPX_CORE_PADCTL4_RXDAT_VLD_TIMEOUT_U3(0x5dc0);
+-		xudc_writel(xudc, val, SSPX_CORE_PADCTL4);
+-
+-		/* Default ping LFPS tBurst is too large. */
+-		val = xudc_readl(xudc, SSPX_CORE_CNT0);
+-		val &= ~(SSPX_CORE_CNT0_PING_TBURST_MASK);
+-		val |= SSPX_CORE_CNT0_PING_TBURST(0xa);
+-		xudc_writel(xudc, val, SSPX_CORE_CNT0);
+-
+-		/* Default tPortConfiguration timeout is too small. */
+-		val = xudc_readl(xudc, SSPX_CORE_CNT30);
+-		val &= ~(SSPX_CORE_CNT30_LMPITP_TIMER_MASK);
+-		val |= SSPX_CORE_CNT30_LMPITP_TIMER(0x978);
+-		xudc_writel(xudc, val, SSPX_CORE_CNT30);
+-	}
+ 	if (xudc->soc->lpm_enable) {
+ 		/* Set L1 resume duration to 95 us. */
+ 		val = xudc_readl(xudc, HSFSPI_COUNT13);
+@@ -3437,17 +3402,6 @@ static void tegra_xudc_device_params_init(struct tegra_xudc *xudc)
+ 		xudc_writel(xudc, val, HSFSPI_COUNT13);
+ 	}
+ 
+-	if (!xudc->soc->skip_sspx_config) {
+-		/*
+-		 * Compliance suite appears to be violating polling
+-		 * LFPS tBurst max of 1.4us.  Send 1.45us instead.
+-		 */
+-		val = xudc_readl(xudc, SSPX_CORE_CNT32);
+-		val &= ~(SSPX_CORE_CNT32_POLL_TBURST_MAX_MASK);
+-		val |= SSPX_CORE_CNT32_POLL_TBURST_MAX(0xb0);
+-		xudc_writel(xudc, val, SSPX_CORE_CNT32);
+-	}
+-
+ 	/* Direct HS/FS port instance to RxDetect. */
+ 	val = xudc_readl(xudc, CFG_DEV_FE);
+ 	val &= ~(CFG_DEV_FE_PORTREGSEL_MASK);
+@@ -3497,6 +3451,81 @@ static void tegra_xudc_device_params_init(struct tegra_xudc *xudc)
+ 	xudc_writel(xudc, val, CFG_DEV_SSPI_XFER);
+ }
+ 
++static void tegra186_xudc_device_params_init(struct tegra_xudc *xudc)
++{
++	u32 val;
++
++	val = xudc_readl(xudc, BLCG) & ~BLCG_COREPLL_PWRDN;
++	xudc_writel(xudc, val, BLCG);
++
++	if (xudc->soc->has_ipfs) {
++		val = xudc_readl(xudc, BLCG);
++		val |= BLCG_ALL;
++		val &= ~(BLCG_DFPCI | BLCG_UFPCI | BLCG_FE |
++				BLCG_COREPLL_PWRDN);
++		val |= BLCG_IOPLL_0_PWRDN;
++		val |= BLCG_IOPLL_1_PWRDN;
++		val |= BLCG_IOPLL_2_PWRDN;
++
++		xudc_writel(xudc, val, BLCG);
++	}
++
++	if (xudc->soc->port_speed_quirk)
++		tegra_xudc_limit_port_speed(xudc);
++
++	/* Set a reasonable U3 exit timer value. */
++	val = xudc_readl(xudc, SSPX_CORE_PADCTL4);
++	val &= ~(SSPX_CORE_PADCTL4_RXDAT_VLD_TIMEOUT_U3_MASK);
++	val |= SSPX_CORE_PADCTL4_RXDAT_VLD_TIMEOUT_U3(0x5dc0);
++	xudc_writel(xudc, val, SSPX_CORE_PADCTL4);
++
++	/* Default ping LFPS tBurst is too large. */
++	val = xudc_readl(xudc, SSPX_CORE_CNT0);
++	val &= ~(SSPX_CORE_CNT0_PING_TBURST_MASK);
++	val |= SSPX_CORE_CNT0_PING_TBURST(0xa);
++	xudc_writel(xudc, val, SSPX_CORE_CNT0);
++
++	/* Default tPortConfiguration timeout is too small. */
++	val = xudc_readl(xudc, SSPX_CORE_CNT30);
++	val &= ~(SSPX_CORE_CNT30_LMPITP_TIMER_MASK);
++	val |= SSPX_CORE_CNT30_LMPITP_TIMER(0x978);
++	xudc_writel(xudc, val, SSPX_CORE_CNT30);
++
++	/*
++	 * Compliance suite appears to be violating polling
++	 * LFPS tBurst max of 1.4us.  Send 1.45us instead.
++	 */
++#define SSPX_CORE_CNT32 0x690
++	val = xudc_readl(xudc, SSPX_CORE_CNT32);
++	val &= ~(SSPX_CORE_CNT32_POLL_TBURST_MAX_MASK);
++	val |= SSPX_CORE_CNT32_POLL_TBURST_MAX(0xb0);
++	xudc_writel(xudc, val, SSPX_CORE_CNT32);
++#undef SSPX_CORE_CNT32
++
++	tegra_xudc_device_params_init_common(xudc);
++}
++
++static void tegra264_xudc_device_params_init(struct tegra_xudc *xudc)
++{
++	u32 val;
++
++	val = xudc_readl(xudc, BLCG) & ~BLCG_COREPLL_PWRDN;
++	xudc_writel(xudc, val, BLCG);
++
++#define SSPX_CORE_CNT32 0x4090
++	/*
++	 * Compliance suite appears to be violating polling
++	 * LFPS tBurst max of 1.4us.  Send 1.466us instead.
++	 */
++	val = xudc_readl(xudc, SSPX_CORE_CNT32);
++	val &= ~(SSPX_CORE_CNT32_POLL_TBURST_MAX_MASK);
++	val |= SSPX_CORE_CNT32_POLL_TBURST_MAX(0x3a);
++	xudc_writel(xudc, val, SSPX_CORE_CNT32);
++#undef SSPX_CORE_CNT32
++
++	tegra_xudc_device_params_init_common(xudc);
++}
++
+ static int tegra_xudc_phy_get(struct tegra_xudc *xudc)
+ {
+ 	int err = 0, usb3_companion_port;
+@@ -3654,6 +3683,7 @@ static struct tegra_xudc_soc tegra210_xudc_soc_data = {
+ 	.port_reset_quirk = true,
+ 	.port_speed_quirk = false,
+ 	.has_ipfs = true,
++	.xudc_device_params_init = tegra186_xudc_device_params_init,
+ };
+ 
+ static struct tegra_xudc_soc tegra186_xudc_soc_data = {
+@@ -3668,6 +3698,7 @@ static struct tegra_xudc_soc tegra186_xudc_soc_data = {
+ 	.port_reset_quirk = false,
+ 	.port_speed_quirk = false,
+ 	.has_ipfs = false,
++	.xudc_device_params_init = tegra186_xudc_device_params_init,
+ };
+ 
+ static struct tegra_xudc_soc tegra194_xudc_soc_data = {
+@@ -3682,6 +3713,7 @@ static struct tegra_xudc_soc tegra194_xudc_soc_data = {
+ 	.port_reset_quirk = false,
+ 	.port_speed_quirk = true,
+ 	.has_ipfs = false,
++	.xudc_device_params_init = tegra186_xudc_device_params_init,
+ };
+ 
+ static struct tegra_xudc_soc tegra234_xudc_soc_data = {
+@@ -3695,6 +3727,7 @@ static struct tegra_xudc_soc tegra234_xudc_soc_data = {
+ 	.pls_quirk = false,
+ 	.port_reset_quirk = false,
+ 	.has_ipfs = false,
++	.xudc_device_params_init = tegra186_xudc_device_params_init,
+ };
+ 
+ static struct tegra_xudc_soc tegra264_xudc_soc_data = {
+@@ -3708,7 +3741,7 @@ static struct tegra_xudc_soc tegra264_xudc_soc_data = {
+ 	.pls_quirk = false,
+ 	.port_reset_quirk = false,
+ 	.has_ipfs = false,
+-	.skip_sspx_config = true,
++	.xudc_device_params_init = tegra264_xudc_device_params_init,
+ };
+ 
+ static const struct of_device_id tegra_xudc_of_match[] = {
+@@ -4015,7 +4048,7 @@ static int __maybe_unused tegra_xudc_unpowergate(struct tegra_xudc *xudc)
+ 
+ 	tegra_xudc_fpci_ipfs_init(xudc);
+ 
+-	tegra_xudc_device_params_init(xudc);
++	xudc->soc->xudc_device_params_init(xudc);
+ 
+ 	tegra_xudc_init_event_ring(xudc);
+ 
+-- 
+2.43.0
+
