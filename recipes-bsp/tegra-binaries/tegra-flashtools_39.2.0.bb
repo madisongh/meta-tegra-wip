@@ -61,6 +61,8 @@ do_install() {
 
     install -m 0755 ${S}/l4t_sign_image.sh ${D}${BINDIR}
     sed -i -e's,^\(L4T_BOOTLOADER_DIR=.*\)/bootloader,\1,' ${D}${BINDIR}/l4t_sign_image.sh
+}
+do_install:class-native() {
     install -m 0755 ${S}/create_l4t_bsp_images.py ${D}${BINDIR}/
     cp -R --no-dereference --preserve=links,mode,timestamps ${S}/unified_flash ${D}${BINDIR}/
 }
